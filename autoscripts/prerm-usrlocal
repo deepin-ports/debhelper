@@ -1,5 +1,5 @@
 (
-	while read dir; do
+	while read -r dir; do
 		rmdir "$dir" 2>/dev/null || true
 	done
 ) << DATA

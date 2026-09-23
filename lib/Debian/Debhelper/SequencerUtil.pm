@@ -446,8 +446,8 @@ sub compute_selected_addons {
 
 	if (compat(14, 1) && getpackages() == 1 && !exists($explicitly_managed{'single-binary'})) {
 		if (not compat(13, 1)) {
-			warning("Implicitly activating single-binary dh addon for backwards compatibility.  In compat 14+,");
-			warning("this fallback will *not* happen automatically via dh_auto_install will instead use a");
+			warning("Implicitly activating single-binary dh addon for backwards compatibility.  In compat 15+,");
+			warning("this fallback will *not* happen automatically. The dh_auto_install tool will instead use a");
 			warning("different default for --destdir unless the single-binary add-on is active,");
 			warning("which can cause the source to produce an empty binary package");
 			warning();
@@ -543,10 +543,10 @@ sub run_sequence_command_and_exit_on_failure {
 
 
 sub run_hook_target {
-	my ($target_stem, $min_compat_level, $command, $packages, @opts) = @_;
+	my ($target_stem, $min_compat_level, $command, $packages, $full_command, @opts) = @_;
 	my @todo = @{$packages};
 	foreach my $override_type (undef, "arch", "indep") {
-		@todo = _run_injected_rules_target($target_stem, $override_type, $min_compat_level, $command, \@todo, @opts);
+		@todo = _run_injected_rules_target($target_stem, $override_type, $min_compat_level, $command, \@todo, $full_command, @opts);
 	}
 	return @todo;
 }
@@ -554,7 +554,7 @@ sub run_hook_target {
 # Tries to run an override / hook target for a command. Returns the list of
 # packages that it was unable to run the target for.
 sub _run_injected_rules_target {
-	my ($target_stem, $override_type, $min_compat_level, $command, $packages, @options) = @_;
+	my ($target_stem, $override_type, $min_compat_level, $command, $packages, $full_command, @options) = @_;
 
 	my $rules_target = $target_stem .
 		(defined $override_type ? "-".$override_type : "");
@@ -607,9 +607,24 @@ sub _run_injected_rules_target {
 	# inside the target.
 	$ENV{DH_INTERNAL_OPTIONS}=join("\x1e", @options);
 	$ENV{DH_INTERNAL_OVERRIDE}=$command;
+	my @typoed_names = (
+		'DH_OVERRIDEN_COMMAND',
+		'DH_OVERIDEN_COMMAND',
+		'DH_OVERIDDEN_COMMAND',
+	);
+	if ($full_command and @{$full_command}) {
+		$ENV{$_} = qq{\@echo 'error: The variable is spelled DH_OVERRIDDEN_COMMAND' >&2 ; exit 1} for @typoed_names;
+		$ENV{DH_OVERRIDDEN_COMMAND} = escape_shell(@{$full_command});
+	} else {
+		$ENV{$_} = qq{\@echo 'error: DH_OVERRIDDEN_COMMAND is not defined for ${rules_target} (also, there is a typo in the variable name)' >&2 ; exit 1}
+			for @typoed_names;
+		$ENV{DH_OVERRIDDEN_COMMAND} = qq{\@echo 'error: DH_OVERRIDDEN_COMMAND is not defined for ${rules_target}' >&2 ; exit 1};
+	}
 	run_sequence_command_and_exit_on_failure("debian/rules", $rules_target);
 	delete $ENV{DH_INTERNAL_OPTIONS};
 	delete $ENV{DH_INTERNAL_OVERRIDE};
+	delete $ENV{DH_OVERRIDDEN_COMMAND};
+	delete $ENV{$_} for @typoed_names;
 
 	# Update log for overridden command now that it has
 	# finished successfully.
@@ -694,8 +709,6 @@ sub parse_dh_cmd_options {
 
 sub run_through_command_sequence {
 	my ($full_sequence, $startpoint, $logged, $options, $all_packages, $arch_packages, $indep_packages) = @_;
-
-	my $command_opts = \%Debian::Debhelper::DH::SequenceState::command_opts;
 	my $stoppoint = $#{$full_sequence};
 
 	# Now run the commands in the sequence.
@@ -740,14 +753,15 @@ sub run_through_command_sequence {
 			next;
 		}
 
+		my @full_command = _full_command($command, @opts);
 		my @full_todo = @todo;
-		run_hook_target("execute_before_${command}", 10, $command, \@full_todo, @opts);
+		run_hook_target("execute_before_${command}", 10, $command, \@full_todo, undef, @opts);
 
 		# Check for override targets in debian/rules, and run instead of
 		# the usual command. (The non-arch-specific override is tried first,
 		# for simplest semantics; mixing it with arch-specific overrides
 		# makes little sense.)
-		@todo = run_hook_target("override_${command}", undef, $command, \@full_todo, @opts);
+		@todo = run_hook_target("override_${command}", undef, $command, \@full_todo, \@full_command, @opts);
 
 		if (@todo and not _can_skip_command($command, @todo)) {
 			# No need to run the command for any packages handled by the
@@ -758,18 +772,26 @@ sub run_through_command_sequence {
 					push @opts, "-N$package";
 				}
 			}
+			# Re-compute full-command since the list of affected packages might have changed
+			@full_command = _full_command($command, @opts);
 			if (not should_skip_due_to_dpo($command, Debian::Debhelper::Dh_Lib::_format_cmdline($command, @opts))) {
-				my @cmd_options;
-				# Include additional command options if any
-				push(@cmd_options, @{$command_opts->{$command}})
-					if exists($command_opts->{$command});
-				push(@cmd_options, @opts);
-				run_sequence_command_and_exit_on_failure($command, _remove_dup_pkg_options(@cmd_options));
+				run_sequence_command_and_exit_on_failure(@full_command);
 			}
 		}
 
-		run_hook_target("execute_after_${command}", 10, $command, \@full_todo, @opts);
+		run_hook_target("execute_after_${command}", 10, $command, \@full_todo, undef, @opts);
 	}
+}
+
+sub _full_command {
+	my ($command, @opts) = @_;
+	my $command_opts = \%Debian::Debhelper::DH::SequenceState::command_opts;
+	my @cmd_options;
+	# Include additional command options (from add-ons) if any
+	push(@cmd_options, @{$command_opts->{$command}})
+		if exists($command_opts->{$command});
+	push(@cmd_options, @opts);
+	return ($command, _remove_dup_pkg_options(@cmd_options))
 }
 
 sub _remove_dup_pkg_options {
@@ -856,6 +878,9 @@ sub _stamp_target {
 				for my $opt (@behavior_options) {
 					return 0 if exists($Debian::Debhelper::DH::SequenceState::seen_options{$opt});
 				}
+			} elsif ($type eq 'path') {
+				next if $need =~ m{(?:\A|.*/)[.][.]?(?:/.*|\Z)};
+				return 0 if -e $need;
 			} elsif ($type eq 'buildsystem') {
 				require Debian::Debhelper::Dh_Buildsystems;
 				my $system = Debian::Debhelper::Dh_Buildsystems::load_buildsystem(undef, $need);

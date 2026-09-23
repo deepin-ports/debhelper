@@ -34,7 +34,8 @@ L<dh_installdeb(1)>.
 
 =item debian/I<package>.modprobe
 
-Installed to etc/modprobe.d/I<package>.conf in the package build directory.
+Installed to usr/lib/modprobe.d/I<package>.conf in the package build directory.
+Before compat version 14, files get installed under etc/modprobe.d instead.
 
 =back
 
@@ -100,8 +101,10 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 	);
 
 	if ($modprobe_file) {
-		my $path = '/etc/modprobe.d/' . pkgfilename($package) . '.conf';
-		install_dir("$tmp/etc/modprobe.d");
+		my $modprobe_dir = compat(13) ? '/etc/modprobe.d' : '/usr/lib/modprobe.d';
+
+		my $path = $modprobe_dir . '/' . pkgfilename($package) . '.conf';
+		install_dir("$tmp$modprobe_dir");
 		install_file($modprobe_file, "$tmp/$path");
 	}
 	

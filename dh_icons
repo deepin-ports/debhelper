@@ -45,6 +45,8 @@ Do not modify maintainer scripts.
 init();
 
 # PROMISE: DH NOOP WITHOUT tmp(usr/share/icons) cli-options()
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 my $baseicondir="/usr/share/icons";
 
 foreach my $package (@{$dh{DOPACKAGES}}) {

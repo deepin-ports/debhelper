@@ -69,6 +69,8 @@ Enable this tool in a package that uses B<dh>.
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 init(options => {
 	'fail-noop!' => sub { $dh{NOOP_LEVEL} = 'error'; },
 	'warn-noop!' => sub { $dh{NOOP_LEVEL} = 'warning'; },

@@ -76,6 +76,8 @@ deleted by B<dh_clean> later.
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES pkgfile(files)
+
 init(options => {
 	"sourcedir=s" => \$dh{SOURCEDIR},	
 });

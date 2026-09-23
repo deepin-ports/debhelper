@@ -1,6 +1,5 @@
 Source: debhelper
 Section: devel
-Priority: optional
 Maintainer: Debhelper Maintainers <debhelper@packages.debian.org>
 Uploaders:
  Niels Thykier <niels@thykier.net>,
@@ -10,6 +9,7 @@ Build-Depends:
  man-db <pkg.debhelper.ci>,
  perl:any,
  po4a <!pkg.debhelper.nonls>,
+ shellcheck <!nocheck>,
 X-DH-Compat: 15
 X-Style: black
 Rules-Requires-Root: no
@@ -57,9 +57,6 @@ Suggests:
 Replaces:
  dh-buildinfo,
 Provides:
-# Per #1068809, debhelper will temporarily provides/replaces/conflicts on
-# dh-buildinfo to ease the transition
- dh-buildinfo,
  dh-sequence-dwz,
  dh-sequence-elf-tools,
  dh-sequence-installinitramfs,

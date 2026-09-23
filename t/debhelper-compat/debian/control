@@ -2,7 +2,7 @@ Source: foo
 Section: misc
 Priority: optional
 Build-Depends: BUILD_DEPENDS
-Maintainer: Test <testing@nowhere>
+Maintainer: Test <testing@nowhere.example.com>
 Rules-Requires-Root: no
 Standards-Version: 3.9.8
 

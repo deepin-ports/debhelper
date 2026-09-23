@@ -114,7 +114,7 @@ init(options => {
 my $news_name="NEWS.Debian";
 my $changelog_name="changelog.Debian";
 
-use constant CUTOFF_DATE_STR => "2019-07-06"; # oldstable = Debian 10 Buster
+use constant CUTOFF_DATE_STR => "2023-06-10"; # oldstable = Debian 12 Bookworm
 use constant CUTOFF_DATE => Time::Piece->strptime(CUTOFF_DATE_STR, "%Y-%m-%d");
 use constant MIN_NUM_ENTRIES => 4;
 
@@ -164,14 +164,10 @@ sub install_debian_changelog {
 	my $changelog_trimmed = generated_file($package, "dh_installchangelogs.dch.trimmed");
 	my $changelog_binnmu = generated_file($package, "dh_installchangelogs.dch.binnmu");
 
-	my ($error_in_changelog, $has_been_trimmed, $oldest_entry_time) =
+	my ($has_been_trimmed, $oldest_entry_time) =
 		prepare_changesfile("CHANGELOG", $changelog, $changelog_trimmed, $changelog_binnmu);
 
-	if ($error_in_changelog) {
-		# If the changelog could not be trimmed, fall back to the full changelog.
-		warning("$changelog could not be trimmed. The full changelog will be installed.");
-		$changelog_trimmed = $changelog;
-	} elsif ($has_been_trimmed) {
+	if ($has_been_trimmed) {
 		# Otherwise add a comment stating that this changelog has been trimmed.
 		my $note = "\n";
 		$note .= "# Older entries have been removed from this changelog.\n";
@@ -190,9 +186,9 @@ sub install_debian_changelog {
 }
 
 sub install_debian_news {
-	my ($news, $package, $oldest_log_entry_time, $tmp) = @_;
+	my ($news, $package, $tmp) = @_;
 
-	if ($dh{NO_TRIM} || get_buildoption("notrimdch") || !defined($oldest_log_entry_time)) {
+	if ($dh{NO_TRIM} || get_buildoption("notrimdch")) {
 		# Install the whole NEWS file.
 		install_file($news, "$tmp/usr/share/doc/$package/$news_name");
 		return;
@@ -200,22 +196,14 @@ sub install_debian_news {
 
 	my $news_trimmed = generated_file($package, "dh_installchangelogs.news.trimmed");
 
-	my ($error_in_news, $has_been_trimmed, $oldest_entry_time) =
-		prepare_changesfile("NEWS", $news, $news_trimmed, undef, $oldest_log_entry_time);
-
-	if ($error_in_news) {
-		# If the NEWS file could not be trimmed, fall back to the full NEWS file.
-		warning("$news could not be trimmed. The full NEWS file will be installed.");
-		$news_trimmed = $news;
-	}
-
+	my ($has_been_trimmed) = prepare_changesfile("NEWS", $news, $news_trimmed, undef);
+	my $source = $has_been_trimmed ? $news_trimmed : $news;
 	# Install NEWS unless there are no recent news.
-	install_file($news_trimmed, "$tmp/usr/share/doc/$package/$news_name")
-		unless (-z $news_trimmed);
+	install_file($source, "$tmp/usr/share/doc/$package/$news_name") unless (-z $source);
 }
 
 sub prepare_changesfile {
-	my ($mode, $changesfile, $changesfile_trimmed, $changelog_binnmu, $oldest_log_entry_time) = @_;
+	my ($mode, $changesfile, $changesfile_trimmed, $changelog_binnmu) = @_;
 
 	local $ENV{LC_ALL} = "C.UTF-8";
 
@@ -225,10 +213,11 @@ sub prepare_changesfile {
 	open(my $log2, ">", $changesfile_trimmed) or error("Cannot open($changesfile_trimmed): $!");
 
 	my $oldest_entry_time;
-	my $error_in_changesfile = 0;
 	my $is_binnmu = 0;
 	my $entry = "";
 	my $entry_num = 0;
+	my $warned_once = 0;
+	my $has_been_trimmed = 0;
 	while (my $line=<$log1>) {
 		$entry .= $line;
 
@@ -260,25 +249,26 @@ sub prepare_changesfile {
 			}
 
 			my $timestamp = $+{timestamp};
-			$timestamp =~ s/^[A-Za-z]+, +//;
+			my $date_part = $timestamp =~ s/^[A-Za-z]+, +//r;
 
 			my $entry_time;
-			eval { $entry_time = Time::Piece->strptime($timestamp, '%d %b %Y %T %z') };
+			eval { $entry_time = Time::Piece->strptime($date_part, '%d %b %Y %T %z') };
 			if (! defined $entry_time) {
-				$error_in_changesfile = 1;
-				warning("Could not parse timestamp '$timestamp'. $changesfile will not be trimmed.");
-				truncate($log2, 0) or error("Cannot truncate($changesfile_trimmed): $!");
-				last;
+				error("Could not parse timestamp '$timestamp' on line $. of ${changesfile}. Please ensure it follows the policy requirements for a signoff date");
 			}
 
 			# Stop processing the changelog if we reached the cut-off date and
 			# at least MIN_NUM_ENTRIES entries have been added.
 			if ($should_be_trimmed && ($mode eq "CHANGELOG") && ($entry_time < CUTOFF_DATE) && ($entry_num >= MIN_NUM_ENTRIES)) {
+				$has_been_trimmed = 1;
 				last;
 			}
 
-			# Stop processing the NEWS file if we reached the oldest date in the changelog.
-			if ($should_be_trimmed && ($mode eq "NEWS") && ($entry_time < $oldest_log_entry_time)) { last; }
+			# Stop processing the NEWS file if we reached the cut-off date.
+			if ($should_be_trimmed && ($mode eq "NEWS") && ($entry_time < CUTOFF_DATE)) {
+				$has_been_trimmed = 1;
+				last;
+			}
 
 			# Record the timestamp of what is currently the oldest entry
 			# in the trimmed changelog.
@@ -290,13 +280,11 @@ sub prepare_changesfile {
 			$entry_num++;
 		}
 	}
-	# If the whole changelog has not been read, then it has been trimmed.
-	my $has_been_trimmed = !eof($log1);
 
 	close($log1) or error("Cannot close($changesfile): $!");
 	close($log2) or error("Cannot close($changesfile_trimmed): $!");
 
-	return $error_in_changesfile, $has_been_trimmed, $oldest_entry_time
+	return $has_been_trimmed, $oldest_entry_time
 }
 
 # INTROSPECTABLE: CONFIG-FILES pkgfile(changelog) pkgfile(NEWS)
@@ -366,14 +354,13 @@ on_pkgs_in_parallel {
 
 		install_dir("$tmp/usr/share/doc/$package");
 
-		my $oldest_log_entry_time;
 		if (! $dh{NO_ACT}) {
 			my $arch = package_binary_arch($package);
-			$oldest_log_entry_time = install_debian_changelog($changelog, $package, $arch, $tmp);
+			install_debian_changelog($changelog, $package, $arch, $tmp);
 		}
 
 		if (-e $news && ! $dh{NO_ACT}) {
-			install_debian_news($news, $package, $oldest_log_entry_time, $tmp);
+			install_debian_news($news, $package, $tmp);
 		}
 
 		if (defined($upstream_changelog)) {

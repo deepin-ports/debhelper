@@ -8,7 +8,7 @@ package Debian::Debhelper::Buildsystem::autoconf;
 
 use strict;
 use warnings;
-use Debian::Debhelper::Dh_Lib qw(%dh dpkg_architecture_value get_buildoption sourcepackage compat);
+use Debian::Debhelper::Dh_Lib qw(%dh dpkg_architecture_value get_buildoption sourcepackage compat get_build_tool);
 use parent qw(Debian::Debhelper::Buildsystem::makefile);
 
 sub DESCRIPTION {
@@ -29,6 +29,11 @@ sub check_auto_buildable {
 
 sub configure {
 	my $this=shift;
+
+	foreach my $tool (qw(CC CXX)) {
+		my $cmd = get_build_tool(tool => $tool);
+		$ENV{$tool} = $cmd if $cmd;
+	}
 
 	# Standard set of options for configure.
 	my @opts;

@@ -6,7 +6,7 @@ dh_assistant - tool for supporting debhelper tools and provide introspection
 
 =cut
 
-use strict;
+use v5.28;
 use warnings;
 use constant EXIT_CODE_LINT_ISSUES_FOUND => 2;
 use Debian::Debhelper::Dh_Lib;
@@ -60,7 +60,7 @@ B<declared-compat-level>) or one of:
 
 =item debian/compat
 
-The compatibility level was declared in the first line F<debian/compat> file.
+The compatibility level was declared in the single line F<debian/compat> file.
 
 =item X-DH-Compat: <C>
 
@@ -127,14 +127,15 @@ debhelper's auto-detection logic.
 
 The value is valid as a parameter for the B<--buildsystem> option.
 
-The special value B<none> is used to denote that no build system would be used.  This value
-is not present in B<--list> parameter for the B<dh_auto_*> commands, but since debhelper/12.9
-the value is accepted for the B<--buildsystem> option.
+The special value B<"none"> is used to denote that no build system would be used (that is,
+a JSON I<string>).  This value is not present in B<--list> parameter for the B<dh_auto_*>
+commands, but since debhelper/12.9 the value is accepted for the B<--buildsystem> option.
+
 
 Note that auto-detection is subject to limitations in regards to third-party build systems.
 While debhelper I<does> support auto-detecting some third-party build systems, they must be
 installed for the detection to work.  If they are not installed, the detection logic silently
-skips that build system (often resulting in B<build-system> being B<none> in the output).
+skips that build system (often resulting in B<build-system> being B<"none"> in the output).
 
 =item *
 
@@ -162,6 +163,305 @@ the B<parallel> keyword, then B<parallel> field in the output will always be 1.
 Most fields in the output I<can> be null.  Particular if there is no build system is detected
 (or when B<--buildsystem=none>).  Additionally, many of the fields can be null even if there
 is a build system if the build system does not use/set/define that variable.
+
+=back
+
+=head2 parse-dh-cli-args (AJSON, BLD)
+
+B<Synopsis>:  B<dh_assistant> B<parse-dh-cli-args> I<dh_assistant-options> -- I<command-line-options>
+
+Parses I<command-line-options> like a B<dh_*> command would and output a JSON document with the result.
+
+This subcommand is aimed at supporting third-party commands in implementing the B<debhelper> command-line
+parsing logic. The rules look deceptively simple but turns out to be very complex, which means that
+tools not written using the B<Debian::Debhelper::Dh_Lib> module will be at a massive disadvantage.
+As a consequence, consumers get a mixed result since some times behave differently to the same
+options than others.
+
+This command reacts to option parsing like any built debhelper command and therefore accounts for
+B<DH_OPTIONS> and other such environment variables. However, since B<dh_assistant> has to parse
+the options without knowing all arguments, it might get command specific options wrong if the
+value looks like option. As an example, if B<dh_assistant> sees B<--foo -a>, it assumes B<-a>
+is the debhelper B<-a> and leaves B<--foo> as unparsed. If B<--foo> always takes a parameter
+in the caller, then this is the wrong behavior. This ambiguity can be avoided if B<--foo=-a>
+is passed instead. This problem can also occur due to "bundling" such as B<-fa> (which
+debhelper reads as the two independent options B<-f -a>. This is for the caller to avoid.
+
+If the command returns successfully, the output will be JSON describing the options (see
+description below for the details). Otherwise, there will be a human readable error on
+stderr for what went wrong. Note that stderr can also be used to emit warnings on a successful
+run.
+
+The I<command-line-options> should be the command line options the caller wish to have parsed
+on their behalf.
+
+=head3 Options specific for B<dh_assistant>
+
+The command accepts the following arguments in the place of I<dh_assistant-options>:
+
+=over 4
+
+=item B<--on-behalf-of-cmd=>I<COMMAND> (B<mandatory>)
+
+The name of the command calling.
+
+=item B<--masquerade>, B<--no-masquerade> (I<optional>)
+
+Whether B<dh_assistant> should pretend to be the caller if it outputs any warnings or errors.
+
+By default, it will use its own name but mention the calling command. When B<--masquerade> is
+passed, only the calling commands name will be listed in the log file. The difference being
+whether the user sees:
+
+  dh_assistant (for dh_command): ...
+
+vs.
+
+  dh_command: ...
+
+Though, this option is only relevant if the stderr of the B<dh_assistant> process is not
+redirected away.
+
+=item B<--inhibit-log>, B<--no-inhibit-log> (I<optional>)
+
+Whether B<dh_assistant> should write to the debhelper log that the command has acted
+on the packages (when that is relevant). Any package name listed in B<active-packages>
+of the output will be marked as acted on in the log when the log is used and B<--inhibit-log>
+is used (which is the default).
+
+This is necessary for B<--remaining-packages> to work correctly in hook targets.
+
+If B<--no-inhibit-log> is passed, the caller must update the log themselves on successful
+completion of the command.
+
+=item B<--noop-warnings>, B<--no-noop-warnings> (I<optional>)
+
+It is possible for a command to end up in a situation where the command line options plus the
+current build implies there are no packages to be acted on. This results in the
+B<active-packages> key of the output being an empty list.
+
+Generally, the correct answer here is to output a warning and exit successfully despite having
+done nothing. By default (B<--noop-warnings>), B<dh_assistant> emits these warnings on behalf
+of the caller. The B<--no-noop-warnings> can be used if the warning is undesirable for some
+reason.
+
+=back
+
+=head3 JSON output format
+
+The output of this command is a JSON document of
+
+  {
+    "active-packages": ["debhelper"],
+    "debhelper-settings": {
+      "exclude": [],
+      "no-act": false,
+      "no-scripts": false,
+      "quiet": false,
+      "requested-staging-dir": null,
+      "verbose": false
+    },
+    "options": {
+      "--all": false,
+      "--name": null,
+      "-d": null,
+      "-v": null,
+      "args": [],
+      "try-args": []
+    },
+    "packages": {
+      "debhelper": {
+         "binary-arch": "all",
+         "declared-arch": "all",
+         "package-type": "deb"
+      }
+    }
+  }
+
+The keys have the following definition:
+
+=over 4
+
+=item B<active-packages>
+
+List of packages to act on.
+
+This list I<can> be empty if the user requested packages that cannot be built. This can
+occur with B<-a> when all packages are B<Architecture: all> as an example.
+
+The value is always included and never null.
+
+=item B<debhelper-settings>
+
+This is an object of common and well defined debhelper options that might be
+of interest. Not all of these have a 1:1 with a command line option (B<quiet>
+is a consequence of no B<-v> combined with B<DEB_BUILD_OPTIONS=terse>), but they
+are still provided here for simplicity.
+
+The object is always included and never null.
+
+The following key-value pairs are defined in this object:
+
+=over 4
+
+=item B<verbose>, B<quiet>
+
+The B<verbose> and B<quiet> values  define how verbose the command should be. They are
+never both true at the same time as debhelper prefers B<-v> (verbose) over B<terse> (quiet).
+However, they can both be B<false> at the same time and this is the default state.
+
+The B<verbose> option is triggered by options like B<-v>, B<--verbose> or the B<DH_VERBOSE>
+environment variable. The B<quiet> option is triggered things like B<DEB_BUILD_OPTIONS>
+containing B<terse>.
+
+The values are always set, boolean and never null.
+
+=item B<no-act>
+
+When true, the user passed the B<--no-act> option. The command is expected to write
+what it would do but not actually do it. The accuracy is on a best-effort basis,
+since actions can have side-effects that affect later actions and those can be
+difficult to emulate.
+
+The value is always set, boolean and never null.
+
+=item B<no-scripts>
+
+These options correspond to the B<--no-scripts> option.
+
+They typically control whether the command should generate maintscripts. When true,
+the command should skip generation of such script snippets.
+
+Some command also use this to control whether triggers are generated for historical
+reasons.
+
+The value is always set, boolean and never null.
+
+=item B<exclude>
+
+This is a list of all the requested exclusions. Typically from B<--exclude> options.
+However, it also includes values from other sources such as ENV variables.
+
+It is up to the command to define how exclusions affect them if at all or even how
+they match. Common examples include substring matching or regexes on filenames.
+
+The value is always set, a list and never null, but the list can be empty.
+
+=item B<requested-staging-dir>
+
+This is a nullable string matching the B<-P> option. If null (the default), then
+the default per package staging directory should be used (F<< debian/I<PACKAGE> >>).
+
+It only makes sense when there is at most one active package. Note it can appear
+with no active packages if the command is called unconditionally with B<-p PKG>
+and the provided package should not be built for some reason.
+
+Note: The directory (when provided) can be either relative or absolute based on
+how the value for the option was defined. Additionally, the directory is not
+required to exist as tools are expected to create directories as necessary.
+
+=back
+
+=item B<options>
+
+This is an object containing information about command options used.
+
+The object is always present and never null.
+
+The following key-value pairs are defined in this object:
+
+=over 4
+
+=item B<--all>
+
+Whether the B<--all> option was passed. It is a boolean option (never null).
+
+This is a niche option and many commands ignore it.
+
+=item B<--name>
+
+If not null, the B<--name> parameter was passed. For commands that support named
+configuration files, it defines the I<named> segment of the files and typically
+also part of the basename the file is installed under (if installed).
+
+Many commands ignore this option.
+
+=item B<-d>, B<-V>
+
+These options are defined as common arguments but with no well-defined meaning.
+Commands are free to choose their own definition.
+
+The B<-d> is a boolean option (never null). The value is true if B<-d> was passed and false
+otherwise. The B<-V> is an parameter that optionally takes a string. It will be null, if
+B<-V> is not passed otherwise it will be a string. The empty string means no value was
+passed to B<-V>.
+
+=item B<args>
+
+List of arguments that B<dh_assistant> did not understand and assume are arguments
+for the caller. Their relative order is preserved but debhelper specific options are
+removed. As an example, if B<dh_assistant> is passed B<--foo -a -v bar>, then B<args>
+will be the list B<["--foo", "bar"]>.
+
+The value is always present, a list and never null. It can be and often is empty.
+
+=item B<try-args>
+
+List of arguments that were prefixed with B<-O> and that B<dh_assistant> did not understand.
+
+The caller should try to parse each of them individually and accept the ones it understands.
+Unknown arguments should be ignored silently.
+
+When parameters that accept values are passed via B<-O> they must always be passed with their
+value as a single argument (such as B<-O--foo=bar>). This is a deeply root assumption in
+debhelper and caller is expected to follow that assumption rather than conditionally parsing
+an extra argument.
+
+The value is always present, a list and never null. It can be and often is empty.
+
+=back
+
+=item B<packages>
+
+This is an object containing information about packages.
+
+The object is always present and never null.
+
+Each key is the name of a package defined in F<debian/control>. The values are
+an object. There is always a key for every package defined in F<debian/control>
+even if they are not listed in B<active-packages>.
+
+The following key-value pairs are defined in the per package object object:
+
+=over 4
+
+=item B<declared-arch>
+
+This is the value of the B<Architecture> field and therefore a string. That string
+can be interpreted as a space separated list of architectures or architecture wild
+cards.
+
+If the value is equal to B<all>, then the package is an "arch:all" package.
+
+=item B<binary-arch>
+
+This is the architecture of this binary package if it is built. Unlike B<declared-arch>
+this is always a single architecture.
+
+If the value is equal to B<all>, then the package is an "arch:all" package.
+
+One can be forgiving for assuming this value is always either B<all> or the value of
+B<DEB_HOST_ARCH>. While that holds in 99.9% of the cases, debhelper supports some
+very special cases where that is not true. Consumers are recommended to use this
+value rather than doing their own computation here.
+
+=item B<package-type>
+
+This is the type of package being built (the B<Package-Type> field).
+
+Most commonly the value will be B<deb>. However, B<udeb> is another known value.
+
+=back
 
 =back
 
@@ -626,11 +926,12 @@ can have the following keys:
 
 =item file-type
 
-The type of config file detected. At the time of writing, this will always be B<pkgfile>. However,
+The type of config file detected. At the time of writing, this will either be B<pkgfile> or B<path>. However,
 other values may appear in the future.
 
-The B<pkgfile> key means that the config file is a B<debhelper pkgfile> (named after the B<pkgfile> sub
-in L<Debian::Debhelper::Dh_Lib> that locates the file).
+When it is B<pkgfile>, then the config file is a B<debhelper pkgfile> (named after the B<pkgfile> sub
+in L<Debian::Debhelper::Dh_Lib> that locates the file). The value denoted by the B<pkgfile> key will
+be the I<stem> of the B<pkgfile> (the I<install> in B<< debian/package. I<install> >>).
 
 =item pkgfile
 
@@ -645,6 +946,14 @@ Typically names for these files are:
      debian/PACKAGE.PKGFILE
 
 However, there are more variants caused by B<--name> plus architecture specific suffixes.
+
+=item path
+
+When B<file-type> is B<path>, this key defines the static path of the configuration. An example,
+this will be B<debian/clean> for L<dh_clean(1)>'s config file and B<debian/not-installed> for
+L<dh_missing(1)>.
+
+When B<file-type> is B<not> B<path>, then this key will be absent.
 
 =item internal
 
@@ -683,7 +992,7 @@ hook targets for the command.
 If present, this denotes the B<dh> add-on that removed the command from the sequence (thereby disabling
 this command for that package).
 
-Note this field is not present in all cases even when B<is-active> is true. As an example, as obsolete
+Note this field is not present in all cases regardless of the value of B<is-active>. As an example, as obsolete
 commands (such as B<dh_gconf>) are not part of any sequence by the time they are marked as obsolete.
 
 If you (as a consumer) need to know whether a command is obsolete or the particular reason why a command
@@ -820,6 +1129,51 @@ be applying a sledgehammer where you needed a different tool.
 
 =back
 
+=head2 compat-upgrade-checklist (EXEC)
+
+B<Synopsis>: B<dh_assistant> B<compat-upgrade-checklist> [B<--target-compat> I<N>]
+
+This command generates a compat upgrade checklist for the current package.
+
+The upgrade checklist is intended as an aid for contributors that upgrade a package to a newer
+compat level. Where possible, B<dh_assistant> will attempt to detect whether some of the items
+are likely to be irrelevant and mark them as such. The logic will in many cases be a heuristic
+that can have false-positives and false-negatives.
+
+The output is a markdown based checklist template aimed at being human-readable (output stability
+is not a goal). Typically, the user will want to direct standard output and then edit the checklist
+as they process to a file a la:
+
+    dh_assistant compat-upgrade-checklist > debian/compat-upgrade-checklist.md
+    editor debian/compat-upgrade-checklist.md
+    # Iterate through the checklist, tweak the packaging, cross off items from the checklist (rinse and repeat)
+    # Finally, remove the checklist.
+    rm -f debian/compat-upgrade-checklist.md  # when the migration is complete
+
+The command will provide a checklist up to latest stable compat level or the compat level provided
+via the B<--target-compat> option.
+
+This command accepts the following options:
+
+=over 4
+
+=item B<--target-compat> I<N>
+
+Request the upgrade checklist to stop at the provided compat level rather than the highest stable compat
+level. This option can be used to limit the checklist to a given compat level or request checklists
+for experimental compat levels.
+
+The option I<cannot> be used to generate a checklist for downgrading to a previous compat level. Trying
+to do so will result in an error message.
+
+=back
+
+Note: If you run this command from a git checkout of B<debhelper>, the behavior is slight different, since
+it will not correctly track which compat levels are stable (it is a build-time inserted property). As such,
+you will see experimental compat levels in the checklists by default, and they will B<not> be marked as such.
+If you use the git checkout, it falls on you to be extra careful with these limitations of the generated
+checklist.
+
 =head2 supports (CFFA)
 
 B<Synopsis>: B<dh_assistant> B<supports> B<COMMAND>
@@ -848,7 +1202,7 @@ considered safe, because B<PERL5LIB> is assumed to be curated to only include tr
 
 The command always provides JSON output. See L</JSON OUTPUT> for details.
 
-=item OJSON
+=item RJSON
 
 The command *can* provide JSON output via B<--output-format=json>, but does not
 do so by default. See L</JSON OUTPUT> for details when using B<--output-format=json>.
@@ -909,7 +1263,7 @@ my $JSON_ENCODER = JSON::PP->new->utf8;
 # Prettify if we think the user is reading this.
 $JSON_ENCODER = $JSON_ENCODER->pretty->space_before(0)->canonical if -t STDOUT;
 
-# We never use the log file for this tool
+# We never use the log file for this tool (by default, commands can opt-in too it)
 inhibit_log();
 $Debian::Debhelper::Dh_Lib::PARSE_DH_SEQUENCE_INFO = 1;
 # Force commands to opt-in
@@ -917,18 +1271,20 @@ $Debian::Debhelper::Dh_Lib::ALLOW_UNSAFE_EXECUTION = 0;
 
 
 my %COMMANDS = (
-    'help'                         => \&_do_help,
-    '-h'                           => \&_do_help,
-    '--help'                       => \&_do_help,
-    'active-compat-level'          => \&active_compat_level,
-    'supported-compat-levels'      => \&supported_compat_levels,
-    'which-build-system'           => \&which_build_system,
-    'detect-hook-targets'          => \&detect_hook_targets,
-    'detect-unknown-hook-targets'  => \&detect_unknown_hook_targets,
-    'list-commands'                => \&list_commands,
-    'list-guessed-dh-config-files' => \&list_guessed_dh_config_files,
-    'log-installed-files'          => \&log_installed_files_cmd,
-    'restore-file-on-clean'        => \&dh_assistant_restore_file_on_clean,
+	'help'                         => \&_do_help,
+	'-h'                           => \&_do_help,
+	'--help'                       => \&_do_help,
+	'active-compat-level'          => \&active_compat_level,
+	'supported-compat-levels'      => \&supported_compat_levels,
+	'parse-dh-cli-args'            => \&parse_dh_cli_args,
+	'which-build-system'           => \&which_build_system,
+	'detect-hook-targets'          => \&detect_hook_targets,
+	'detect-unknown-hook-targets'  => \&detect_unknown_hook_targets,
+	'list-commands'                => \&list_commands,
+	'list-guessed-dh-config-files' => \&list_guessed_dh_config_files,
+	'log-installed-files'          => \&log_installed_files_cmd,
+	'restore-file-on-clean'        => \&dh_assistant_restore_file_on_clean,
+	'compat-upgrade-checklist'     => \&compat_upgrade_checklist,
     'supports'                     => \&supports,
 );
 
@@ -950,6 +1306,7 @@ Usage: ${me} <command> [... addition arguments or options ...]
 
 The following commands are available:
   help                       Show this help
+  compat-upgrade-checklist   Provide an compat upgrade checklist for the current package (EXEC)
   active-compat-level        Output information about which compat level is declared/active (AJSON)
   supported-compat-levels    Output information about supported compat levels (AJSON, CRFA)
   which-build-system         Determine which build system will be used (AJSON)
@@ -959,6 +1316,7 @@ The following commands are available:
   list-commands              List all commands across all sequences (RJSON)
   list-guessed-dh-config-files
                              List guessed "config files" for debhelper commands (AJSON)
+  parse-dh-cli-args          Parses debhelper command options for dh-like tools (AJSON, BLD)
   log-installed-files        Mark one or more paths as "installed" so dh_missing is aware (BLD)
   restore-file-on-clean      Mark one or more files as to be restored by dh_clean (BLD)
   supports                   Script aid: Test whether dh_assistant knows a particular command (CRFA)
@@ -1040,6 +1398,82 @@ sub supported_compat_levels {
     _output(\%compat_levels);
     return;
 }
+
+
+sub parse_dh_cli_args {
+	require Getopt::Long;
+    Getopt::Long::config('no_ignore_case');
+
+	my (@dh_assistant_options, $saw_separator, $on_behalf_of, $inhibit_log, $masquerade);
+	my $noop_warnings = 1;
+	while (@ARGV) {
+		my $arg = shift(@ARGV);
+		if ($arg eq '--') {
+			$saw_separator = 1;
+			last;
+		}
+		push(@dh_assistant_options, $arg);
+	}
+	if (not $saw_separator) {
+		error("There must be a `--` to separate `dh_assistant` arguments from the arguments to parse. Even if there are no arguments to parse.");
+	}
+	my %options=(
+		"on-behalf-of-cmd=s" => \$on_behalf_of,
+		"masquerade!"        => \$masquerade,
+		"inhibit-log!"       => \$inhibit_log,
+		"noop-warnings!"     => \$noop_warnings,
+	);
+    Getopt::Long::GetOptionsFromArray(\@dh_assistant_options, %options)
+        or error("Could not parse the arguments for dh_assistant.");
+
+	error("--on-behalf-of-cmd is mandatory") if not $on_behalf_of;
+	error("--on-behalf-of-cmd must not contain '/'") if index($on_behalf_of, '/') >= 0;
+	{
+		no warnings qw(once);
+		$Debian::Debhelper::Dh_Lib::TOOL_NAME = $on_behalf_of;
+		$Debian::Debhelper::Dh_Lib::ME = $on_behalf_of if $masquerade;
+		$Debian::Debhelper::Dh_Lib::WRITE_LOG = 1 if not $inhibit_log;
+	}
+
+	$dh{BLOCK_NOOP_WARNINGS} = ! $noop_warnings;
+	init(
+		'allow_empty_package_selection' => 1,
+		'ignore_unknown_options'        => 1,
+		'inhibit_log'                   => $inhibit_log // 0,
+		'on_behalf_of'                  => $on_behalf_of,
+	);
+	my %package_details = map {
+		$_ => {
+			'declared-arch' => package_declared_arch($_),
+			'binary-arch'   => package_binary_arch($_),
+			'package-type'  => package_type($_),
+		}
+	} getpackages();
+	my %result = (
+		'active-packages'    => $dh{'DOPACKAGES'},
+		'packages'           => \%package_details,
+		'debhelper-settings' => {
+			'verbose'               => $dh{'VERBOSE'} ? JSON::PP::true : JSON::PP::false,
+			'quiet'                 => $dh{'QUIET'} ? JSON::PP::true : JSON::PP::false,
+			'no-act'                => $dh{'NO_ACT'} ? JSON::PP::true : JSON::PP::false,
+			'exclude'               => $dh{'EXCLUDE'} // [],
+			'no-scripts'            => $dh{'NOSCRIPTS'} ? JSON::PP::true : JSON::PP::false,
+			'requested-staging-dir' => $dh{'TMPDIR'},
+		},
+		'options'            => {
+			# Deliberately omitted: --error-handler
+			'--all'           => $dh{'PARAMS_ALL'} ? JSON::PP::true : JSON::PP::false,
+			'--name'          => $dh{'NAME'},
+			'-v'              => $dh{'V_FLAG'},
+			'-d'              => $dh{'D_FLAG'} ? JSON::PP::true : JSON::PP::false,
+			'args'            => $dh{'ARGV'} // [],
+			'try-args'        => $dh{'UNKNOWN_TEST_ARGV'} // [],
+		}
+	);
+	_output(\%result);
+    return;
+}
+
 
 sub which_build_system {
     my ($opt_buildsys, $destdir);
@@ -1256,27 +1690,33 @@ sub list_commands {
 
 sub _extract_annotations {
     my ($command) = @_;
+    my $has_explicit_no_config = 0;
     my @annotations;
 
-	foreach my $dir (split(':', $ENV{PATH})) {
-		if (open (my $h, "<", "$dir/$command")) {
-			while (<$h>) {
-				if (m/PROMISE: DH NOOP( WITHOUT\s+(.*))?\s*$/) {
-					if (defined($2)) {
+    foreach my $dir (split(':', $ENV{PATH})) {
+        if (open (my $h, "<", "$dir/$command")) {
+            while (<$h>) {
+                if (m/PROMISE: DH NOOP( WITHOUT\s+(.*))?\s*$/) {
+                    if (defined($2)) {
                         push(@annotations, split(' ', $2));
                     } else {
                         push(@annotations, 'always-skip');
                     }
-				}
-                if (m/INTROSPECTABLE: CONFIG-FILES\s+(.*)\s*$/) {
-                    push(@annotations, split(' ', $1));
                 }
-			}
-			close $h;
-			return @annotations;
-		}
-	}
-	return;
+                if (m/INTROSPECTABLE: CONFIG-FILES\s+(.*)\s*$/) {
+                    my $anno = $1 // '';
+                    if ($anno eq 'NONE') {
+                        $has_explicit_no_config = 1;
+                    } else {
+                        push(@annotations, split(' ', $anno));
+                    }
+                }
+            }
+            close $h;
+            return $has_explicit_no_config, @annotations;
+        }
+    }
+    return;
 }
 
 sub list_guessed_dh_config_files {
@@ -1305,52 +1745,80 @@ sub list_guessed_dh_config_files {
 
     my ($active_commands, $disabled_cmds, $unloadables) = _all_sequence_commands(1, @addon_requests);
     my $pkg_files = {};
+    my $path_files = {};
     my @all_commands = (@{$active_commands}, keys(%{$disabled_cmds}));
+    my (%known_no_config_files, %has_config_files);
     for my $command (@all_commands) {
-        my @annotations = _extract_annotations($command);
+        my ($has_explicit_no_config, @annotations) = _extract_annotations($command);
+        $known_no_config_files{$command} = 1 if $has_explicit_no_config;
         next if not @annotations or $annotations[0] eq 'always-skip';
         my $bug_950723;
         for my $annotation (@annotations) {
             my $type = 'pkgfile';
-			my $need = $annotation;
-			if ($annotation =~ m/^([a-zA-Z0-9-_]+)\((.*)\)$/) {
-				($type, $need) = ($1, $2);
-			}
-			if ($type eq 'internal') {
-				$bug_950723 = 1 if $need eq 'bug#950723';
-			}
-            next if $type ne 'pkgfile' and $type ne 'pkgfile-logged';
+            my $need = $annotation;
+            if ($annotation =~ m/^([a-zA-Z0-9-_]+)\((.*)\)$/) {
+                ($type, $need) = ($1, $2);
+            }
+            if ($type eq 'internal') {
+                $bug_950723 = 1 if $need eq 'bug#950723';
+            }
+            next if $type ne 'pkgfile' and $type ne 'pkgfile-logged' and $type ne 'path';
             my $key = "pkgfile/${need}";
-            my $existing = $pkg_files->{$key};
             my $is_active = not exists($disabled_cmds->{$command});
             my $command_data = {
                 'command'   => $command,
-                'is-active' => $is_active,
+                'is-active' => $is_active ? JSON::PP::true : JSON::PP::false,
             };
             if (not $is_active) {
                 my $removed_by = $disabled_cmds->{$command};
                 $command_data->{'removed-by'} = $removed_by if $removed_by;
             }
-            if (defined($existing)) {
-                push(@{$existing->{'commands'}}, $command_data);
+            if ($type eq 'path') {
+                next if $need =~ m{(?:\A|.*/)[.][.]?(?:/.*|\Z)};
+                my $existing = $path_files->{$key};
+                if (defined($existing)) {
+                    push(@{$existing->{'commands'}}, $command_data);
+                } elsif ($type eq 'path') {
+                    $existing = {
+                        'file-type' => 'path',
+                        'path'      => $need,
+                        'commands'  => [$command_data],
+                    };
+                    $path_files->{$key} = $existing;
+                }
             } else {
-                $existing = {
-                    'file-type' => 'pkgfile',
-                    'pkgfile'   => $need,
-                    'commands'  => [$command_data],
-                };
-                $pkg_files->{$key} = $existing;
+                my $existing = $pkg_files->{$key};
+                if (defined($existing)) {
+                    push(@{$existing->{'commands'}}, $command_data);
+                } else {
+                    $existing = {
+                        'file-type' => 'pkgfile',
+                        'pkgfile'   => $need,
+                        'commands'  => [$command_data],
+                    };
+                    $pkg_files->{$key} = $existing;
+                }
+                if ($bug_950723) {
+                    $existing->{"internal"}{"bug#950723"} = JSON::PP::true;
+                }
             }
-            if ($bug_950723) {
-                $existing->{"internal"}{"bug#950723"} = JSON::PP::true;
-            }
+            $has_config_files{$command} = 1;
         }
     }
 
     my @config_files = values(%{$pkg_files});
+    push(@config_files, values(%{$path_files}));
     my %result = (
         "config-files" => \@config_files,
     );
+    my @commands_unknown_state = grep {
+        not exists($known_no_config_files{$_})
+        and not exists($has_config_files{$_})
+        and not exists($disabled_cmds->{$_})
+    } @all_commands;
+    if (@commands_unknown_state) {
+        $result{'commands-not-introspectable'} = \@commands_unknown_state;
+    }
     if (@{$unloadables}) {
         my @issues;
         for my $addon (@{$unloadables}) {
@@ -1362,6 +1830,859 @@ sub list_guessed_dh_config_files {
         $result{'issues'} = \@issues;
     }
     _output(\%result);
+}
+
+sub _is_single_binary_addon_candidate_pending_opt_in {
+	return _uses_dh() && getpackages() == 1 && !_has_addon('single-binary')
+}
+
+sub _is_single_binary_package {
+	return scalar(getpackages()) < 2;
+}
+
+sub _first_package {
+	my @packages = getpackages();
+	return $packages[0];
+}
+
+sub _uses_name {
+	state $uses_name;
+	return $uses_name if defined($uses_name);
+	return if not -f 'debian/rules';
+	open(my $fd, '<', 'debian/rules') or error("Cannot read debian/rules: $!");
+	while (my $line = <$fd>) {
+		next if $line =~ m/^\s*#/;
+		if ($line =~ m/^\t(?:.*[\s;&])?dh_.*--name/){
+			$uses_name = 1;
+			last;
+		}
+	}
+	$uses_name //= 0;
+	close($fd);
+	return $uses_name;
+}
+
+sub _source_has_path_with_basename {
+	my ($requested_basename) = @_;
+	state %checked;
+	if (exists($checked{$requested_basename})) {
+		return $checked{$requested_basename};
+	}
+	require File::Find;
+	my $found = 0;
+	File::Find::find({
+		wanted => sub {
+			no warnings qw(once);
+			my $path = $File::Find::name;
+			my $name = basename($path);
+			if ($found || (-d $path && $name eq '.git')) {
+				$File::Find::prune = 1;
+				return;
+			}
+			if ($requested_basename eq $name) {
+				$found = 1;
+				$File::Find::prune = 1;
+				return;
+			}
+		},
+		no_chdir => 1,
+	}, '.');
+	$checked{$requested_basename} = $found;
+	return $found;
+}
+
+sub _uses_build_system {
+	my ($build_system) = @_;
+	# Main problem is dealing with `dh ... --sourcedirectory .... -Sautoreconf` + overrides for `dh_auto_configure`.
+	# - For now, we basically re-implement the auto-detection because it is more reliable.
+	if ($build_system eq 'cmake' or $build_system =~ m/^cmake[+]/) {
+		# cmake has a decent indicator in the form of `CMakeLists.txt`
+		return _source_has_path_with_basename('CMakeLists.txt');
+	}
+	if ($build_system eq 'meson' or $build_system =~ m/^meson[+]/) {
+		# meson has a decent indicator in the form of `meson.build`
+		return _source_has_path_with_basename('meson.build');
+	}
+	if ($build_system eq 'gradle') {
+		# gradle has a decent indicator in the form of `build.gradle` or `build.gradle.kts`
+		return _source_has_path_with_basename('build.gradle') || _source_has_path_with_basename('build.gradle.kts');
+	}
+	# TODO: Not implemented; assumes true to put it into manual review for now.
+	return 1;
+}
+
+# Does not explicitly check for _uses_dh, but is generally stronger than _uses_dh anyway.
+sub _has_hook_target {
+	my ($hook_target) = @_;
+	my $explicit_targets = _load_hook_targets();
+	return exists($explicit_targets->{$hook_target}) ? 1 : 0;
+}
+
+# Does not explicitly check for _uses_dh, but is generally stronger than _uses_dh anyway.
+sub _has_hook_target_for_cmd {
+	my ($command) = @_;
+	for my $variant (_hook_target_variants($command)) {
+		return 1 if _has_hook_target($variant);
+	}
+	return 0;
+}
+
+sub _has_pkgfile {
+	my ($stem) = @_;
+	my @packages = getpackages();
+	return 1 if pkgfile(\@packages, $stem);
+	return 0;
+}
+
+sub _has_addon {
+	my ($addon) = @_;
+	# TODO: Not implemented; assumes true to put it into manual review for now.
+	#
+	# Main problem is dealing with `dh ... --with ....`
+	return 1;
+}
+
+sub _has_file {
+	my ($filename) = @_;
+	return -f $filename;
+}
+
+sub _uses_dh {
+	state $uses_dh;
+	return $uses_dh if defined($uses_dh);
+	return if not -f 'debian/rules';
+	open(my $fd, '<', 'debian/rules') or error("Cannot read debian/rules: $!");
+	while (my $line = <$fd>) {
+		next if $line =~ m/^\s*#/;
+		if ($line =~ m/^\t(?:.*[\s;&])?dh\s/){
+			$uses_dh = 1;
+			last;
+		}
+	}
+	$uses_dh //= 0;
+	close($fd);
+	return $uses_dh;
+}
+
+# Programmatic upgrade checklist.
+#   - The Key is the compat level being upgraded **from**. That is `13` is for the `13 -> 14` upgrade.
+#   - The Value is a dict with the following keys:
+#      - title: The headline (mandatory)
+#      - howtofix: A short description aimed at how to fix the problem (de facto mandatory)
+#      - careful: A short description of what will or can go wrong if this item is not properly heeded.
+#                 Examples include "Orphaned conffiles", "Silent misbuilds".
+#      - validate: How to validate if the package is affected.
+#      - lintian: The lintian bug for this change if relevant.
+#      - docs: List of documentation URIs to show for this item.
+#      - is_relevant: Sub that when invoked returns true if the item is relevant or would require manual review to
+#                     determine if it is relevant. When it returns false, the item does not or is very unlikely to
+#                     affect the source package. When in doubt, factor in the consequence of omitting this item in
+#                     upgrade. If the consequence is bad (such as silent misbuild) then prefer the manual review.
+#
+my %UPGRADE_CHECKLIST_WHEN_UPGRADING_FROM = (
+	7 => [
+		{
+			"title"    => 'Commands from `debhelper` will fail rather than warning when they are passed unknown options except where prefixed by `-O`',
+			"howtofix" => 'Check `debian/rules` and build log for unknown parameters being passed to `debhelper` commands and fix them.',
+		},
+		{
+			"title"    => 'The `dh_makeshlibs` command will run `dpkg-gensymbols` on all shared libraries it generated a `shlibs` file for',
+			"howtofix" => 'Probably the package will be unaffected. But passing `-X` to `dh_makeshlibs` to exclude a library might needed.',
+		},
+		{
+			"title"    => 'The `dh` command requires the sequence name to be the first parameter',
+			"is_relevant" => sub { return _uses_dh()},
+			"howtofix" => 'Check `debian/rules` and see if the `dh` command line might need to be reordered.',
+		},
+		{
+			"title"    => 'The `dh_auto_*` commands will prefer the `perl_build` over `perl_makemaker` when both are an option',
+			"howtofix" => 'Validate that the resulting binary is still as expected. Pass `-Sperl_makemaker` to relevant commands to revert to the previous behavior',
+		},
+	],
+	8 => [
+		{
+			"title"    => 'Multi-arch support: The multi-arch variant of `--libdir` + `--libexecdir` is passed to various build systems',
+			"howtofix" => 'Can cause build failures, when packaging assumes `/usr/lib` rather than the multi-arch directory or when search paths are not used. No generic fix available.',
+		},
+		{
+			"title"    => 'The `dh` command will now properly recurse into `debian/rules` if it defines a target',
+			"is_relevant" => sub { return _uses_dh()},
+			"howtofix" => 'Can cause build failures, if a stray `build` (or similar target) remains in `debian/rules`. Test the package correctly builds after this check and ensure content is not missing.',
+		},
+		{
+			"title"    => 'The `dh_strip` command will now compress debugging symbols to reduce installed size of `-dbg` packages',
+			"is_relevant" => sub {return 0;},
+			"howtofix" => 'Generally a non-problem as the majority of the Debian packages already use compressed debug symbols. No new problems are expected at this point.',
+		},
+		{
+			"title"    => 'The `autoconf` build system no longer includes the source package name in the `--libexecdir` parameter',
+			"howtofix" => 'Ensure the package and relevant dependencies can cope with the new package layout if libexecdir is used by the package at all',
+		},
+		{
+			"title"    => '[NOT RELEVANT] The `python-support` sequence is not enabled by default any more',
+			"is_relevant" => sub {return 0;},
+			"howtofix" => "This entry is here only here for the sake of being 1:1 with the docs. The item became obsolete when the `python-support` sequence was removed in `debhelper/10.3`, so it is no longer possible to use it at all in any compat level.",
+		},
+		{
+			"title"    => 'The `dh` and `dh_auto_*` commands now set flags from `dpkg-buildflags` and passes them to the underlying build systems where possible',
+			"howtofix" => "Ensure the package still works when rebuild. For some, this is unproblematic. For other packages, the hardening flags may cause the package to crash since bugs gets detected at runtime. The latter will require patching up the upstream code to resolve.",
+		},
+		{
+			"title"    => 'The `dh_strip` command uses build-id for the path of debug symbols',
+			"is_relevant" => sub {return scalar(grep { m/^-dbg$/} getpackages()) > 0;},
+			"howtofix" => 'Most packages should not be affected by this, since `dh_strip` handles this behind the scenes. Listed for the sake of the checklist being exhaustive more than anything else.',
+		},
+		{
+			"title"    => 'Executable config files in `debian` are now often run and their output used as configuration when the helper supports it',
+			"howtofix" => 'Ensure files in `debian` does not needlessly have the `x` bit set. Some custom code in `debian/rules` might now be replaced by this feature.',
+		},
+	],
+	9 => [
+		{
+			"title"    => 'The `dh_installinit` command will no longer use `debian/<PACKAGE>` as the name of an init script',
+			"is_relevant" => sub {for my $p (getpackages()) {return 1 if _has_file("debian/${p}");} return 0;},
+			"howtofix" => 'Rename the file to `debian/<PACKAGE>.init`.',
+		},
+		{
+			"title"    => 'The `dh_installdocs` command will now error out when `--link-doc` is used in an incompatible manner',
+			"howtofix" => "If `dh_installdocs` reacts to the use of `--link-doc`, remove the `--link-doc` and remember to perform the relevant `symlink_to_dir` conversion (e.g., via `dh_installdeb`'s `maintscript` file)",
+		},
+		{
+			"title"    => 'The `dh_installwm` command is now more strict about missing man page',
+			"is_relevant" => sub {return _has_pkgfile("wm");},
+			"howtofix" => "If the `dh_installwm` command errors out during build, check that the package provides the relevant man page required for a window manager.",
+		},
+
+		{
+			"title"    => 'All build systems that support parallel now default to parallel builds',
+			"howtofix" => "If the build becomes unstable or fail, you may need `--no-parallel` or `--max-parallel=<LIMIT>` passed to `dh` or relevant `dh_auto_*` command. Note the failure might be due to missing dependencies in upstream's build system rules.",
+		},
+		{
+			"title"    => '[NOT RELEVANT] The `dh` command no longer accepts "manual sequence control" parameters (such as `--before`)',
+			"is_relevant" => sub { return 0; },
+			"howtofix" => "This entry is here only here for the sake of being 1:1 with the docs. The item became obsolete when the `dh` removed support for these options in `debhelper/12.4` regardless of compat level.",
+		},
+		{
+			"title"    => 'The `dh` command no longer tracks commands being run via "log files"',
+			"howtofix" => "Might affect the package if commands are using `dh_foo` outside the `override_dh_foo` target. Especially if combined with `dh_foo --remaining-packages`. Validate if the package is still built as expected.",
+		},
+		{
+			"title"       => 'The `dh_installdeb` command now ensures parameters to `dpkg-maintscript-helper` are properly shell escaped',
+			"is_relevant" => sub {return _has_pkgfile("maintscript")},
+			"howtofix"    => 'If the package relied on shell-constructs, then the generated code may no longer work. Check the files for shell constructs and verify the resulting maintainer scripts',
+		},
+		{
+			"title"       => 'The `dh_installinit` command now defaults to `--restart-after-upgrade`',
+			"howtofix"    => 'If the previous behavior was desired, please override the command and pass `--no-restart-after-upgrade.',
+		},
+		{
+			"title"       => 'The `autoreconf` and `systemd` sequence are now active by default',
+			"howtofix"    => 'Pass `--without autoreconf` or/and `--without systemd` to `dh` to revert to the previous behavior. Explicit `--with` for these sequences can now be removed. Note the `systemd` sequence is removed in compat 11+.',
+		},
+		{
+			"title"    => '[NOT RELEVANT] The `dh` command no longer creates the package build directory when skipping debhelper commands',
+			"is_relevant" => sub { return 0; },
+			"howtofix" => "This entry is here only here for the sake of being 1:1 with the docs. The item became obsolete when became apparent that the compatibility code never worked in the first place.",
+		},
+	],
+	10 => [
+		{
+			"title"       => 'The `dh_installinit` command no longer installs `service` or `tmpfile` files, nor does it generate maintainer script snippets for those files',
+			"is_relevant" => sub { return _has_hook_target_for_cmd("dh_installinit"); },
+			"howtofix"    => 'These features are now handled by a new command  called `dh_installsystemd`. If custom settings were passed to `dh_installinit`, they may be relevant to `dh_installsystemd`as well.',
+		},
+		{
+			"title"       => 'The `dh_systemd_enable` and `dh_systemd_start` commands have been replaced by `dh_installsystemd`',
+			"is_relevant" => sub { return _has_hook_target_for_cmd("dh_systemd_enable") || _has_hook_target_for_cmd("dh_systemd_start"); },
+			"howtofix"    => 'Determine if some of the parameters passed to these commands should move to `dh_installsystemd` instead',
+		},
+		{
+			"title"       => 'The `dh_installdirs` no longer creates `debian/<PACKAGE>` unless it has to create a subdir inside it',
+			"is_relevant" => sub { return 0; },
+			"howtofix"    => 'No packages seem to have been adversely affected by this change, since `debhelper` commands creates parent directories as necessary.',
+			"validate"    => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"       => 'The `makefile` build system now passes `INSTALL="install --strip-program=true"` to `make`',
+			"is_relevant" => sub { return 0; },
+			"howtofix"    => 'Other than slightly more noisy build logs, there are no known instances where this change caused issues.',
+		},
+
+		{
+			"title"       => 'The `autoconf` build system now passes `--runstatedir=/run` to `./configure`',
+			"howtofix"    => 'The `./configure` script may need to be regenerated to support the option.',
+		},
+
+		{
+			"title"       => 'The `cmake` build system now passes `-DCMAKE_INSTALL_RUNSTATEDIR=/run` to `cmake`',
+			"is_relevant" => sub { _uses_build_system('cmake'); },
+			"howtofix"    => 'No known issues has been recorded for this change. However, if needed, override `dh_auto_configure` and pass `-DCMAKE_INSTALL_RUNSTATEDIR=...` with the relevant path to temporarily restore the previous behavior.',
+		},
+		{
+			"title"       => 'The `dh_installman` command now guesses the man page language from path over extension if possible',
+			"howtofix"    => 'Validate the man pages are still installed in the correct directory. The `--language` option can be used to disable the language guessing.',
+		},
+		{
+			"title"       => 'The `dh_auto_install` command now only creates the destination directory if it needs to',
+			"howtofix"    => 'Should be a non-issue. But if needed be, use `dh_installdir` or a hook target to create the necessary directory.',
+			"validate"    => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"       => 'The `dh_installdocs`, `dh_installexamples`, `dh_installinfo`, and `dh_installman` now errors out if a glob pattern does not match anything',
+			"is_relevant" => sub  { _has_pkgfile("docs") || _has_pkgfile("examples") || _has_pkgfile("info") || _has_pkgfile("manpages"); },
+			"howtofix"    => 'Ensure the commands are not processing globs that do not match anything. An error will generally fail the build.',
+			"validate"    => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"       => 'The `dh_installdocs`, `dh_installexamples`, `dh_installinfo`, and `dh_installman` now accepts `--sourcedir`',
+			"howtofix"    => 'If the package passes `--sourcedir` to any of these helpers or `dh`, then they might now use the "wrong" source directory for their search. Check if the build is successful and the correct documentation is installed.',
+		},
+
+		{
+			"title"       => 'The `perl` build systems (`perl-makemaker` and `perl-build`) no longer pass `-I,` to `perl`',
+			"howtofix"    => "Setting and exporting `PERL5LIB=.` in `debian/rules` might be needed if upstream's build system relies on the behavior",
+		},
+
+		{
+			"title"       => 'The `PERL_USE_UNSAFE_INC` environment variable is no longer set by `dh` or `dh_auto_*`',
+			"howtofix"    => "Setting and exporting `PERL5LIB=.` in `debian/rules` might be needed if upstream's build system relies on the behavior",
+		},
+
+		{
+			"title"       => 'The `dh_makeshlibs` command now fails if the `objdump` command fails or returns non-zero',
+			"is_relevant" => sub { return 0; },
+			"howtofix"    => "No known issues to date. But if it did occur, then ensure relevant ELF binaries can be processed by `objdump` or exclude the files from `dh_makeshlibs`.",
+		},
+
+		{
+			"title"       => 'The `dh_installdocs` and `dh_installexamples` now respects the `doc-main-package` concept',
+			"howtofix"    => "In some cases, packages might have a different on what the `doc-main-package` should be for some documentation. Pass `--doc-main-package` to the commands as relevant.",
+		},
+
+		{
+			"title"       => 'The `dh_strip` and `dh_shlibdeps` no longer uses `file` to determine if a file is an ELF file',
+			"howtofix"    => "This change may cause more ELF binaries to be detected by these helpers. Use `-X` to skip files if that becomes a problem.",
+		},
+	],
+	11 => [
+		{
+			"title"    => 'The `dh_makeshlibs` tool now generate `shlibs` with versioned dependencies by default (`-V` is the new default)',
+			"howtofix" => 'Most packages are unaffected, since this is a safer default. If needed, the previous behavior can be requested via `-VNone`.',
+		},
+		{
+			"title"    => 'The `-s` / `--same-arch` option is now removed',
+			"howtofix" => 'Check `debian/rules` for these options and replace them with `-a` or `--same-arch`.',
+			"validate" => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"    => 'The `dh_clean` command no longer accepts `-k`',
+			"howtofix" => 'Check `debian/rules` for `dh_clean` being passed `-k`. The command + option should be replaced by `dh_prep`.',
+			"validate" => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"    => 'The `dh_installinit` command no longer accepts `--no-restart-on-upgrade`',
+			"howtofix" => 'Check `debian/rules` for `dh_installinit` being passed `--no-restart-on-upgrade`. The option should be replaced by `--no-stop-on-upgrade`.',
+			"validate" => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"    => 'Third-party provided `dh_*` commands might fail with a `command-not-found` because they assume the `doit` functions accept shell in a special-case.',
+			"howtofix" => 'If you experience this problem, file a bug against the command in question and await its fix before upgrading.',
+			"validate" => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"    => 'The `dh_install` command no longer accepts `--list-missing` nor `--fail-missing`',
+			"howtofix" => 'Check `debian/rules` for `dh_install` being passed `--list-missing` or `--fail-missing`. If so, remove them and instead rely on `dh_missing` for this functionality',
+			"validate" => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"       => 'The `dh_installinit` command no `upstart` configuration. A `rm_conffile` might be needed',
+			"is_relevant" => sub {return _has_pkgfile("upstart")},
+			"howtofix"    => 'If there are any `debian/<PACKAGE>.upstart` files, ensure the package cleans them up with `rm_conffile` and then remove the offending files.',
+		},
+		{
+			"title"       => 'The `dh_installdeb` command now validates the `maintscript` file during package build',
+			"is_relevant" => sub {return _has_pkgfile("maintscript")},
+			"howtofix"    => 'Run `dh_installdeb` and handle any errors it might report for the `maintscript` files in `debian/`',
+			"validate"    => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"    => 'The `dh_missing` command now defaults to `--list-missing` (will become `--fail-missing` in compat 13)',
+			"howtofix" => 'Check the build log for warnings from `dh_missing` and fix them. Alternatively, override `dh_missing` to get the desired behavior',
+		},
+		{
+			"title"    => 'The `dh_makeshlibs` tool will now only pass ELF binaries to `dpkg-gensymbols` if they have a `SONAME` containing `.so`',
+			"howtofix" => 'Most packages are unaffected, since this is the common convention for shared ELF libraries.',
+		},
+		{
+			"title"    => 'The `dh_compress` command no longer compressed any file under the `examples` folder',
+			"howtofix" => 'Check if any paths/references might be updated since the paths are no longer compressed.',
+		},
+		{
+			"title"    => 'The default `dh` sequence now includes `dh_dwz`, `dh_installinitramfs`, `dh_installsystemduser`',
+			"is_relevant" => \&_uses_dh,
+			"howtofix" => 'Remove the explicit `dh` add-ons for them where used. Also check for hook targets used to manually invoke the commands',
+		},
+		{
+			"title"    => 'The `meson` and `autoconf` build systems no longer explicitly sets the `libexecdir`',
+			"howtofix" => 'Check that relevant binaries till end up in `/usr/libexec`. If not , override `dh_auto_configure` and pass the relevant option to the underlying build sysem',
+		},
+		{
+			"title"       => '[NOT RELEVANT] The `dh_installdeb` command no longer processes the `debian/<PACKAGE>.conffiles` file',
+			"is_relevant" => sub {return 0;},
+			"howtofix"    => "There is nothing to fix as item is no longer applicable. This entry is here only here for the sake of being 1:1 with the docs. The item was undone due to `dpkg`'s `remove-on-upgrade` feature.",
+		},
+		{
+			"title"       => 'The `dh_installsystemd` command no longer relies on `dh_installinit` for `systemd` services',
+			"is_relevant" => sub {_has_hook_target('dh_installinit') || _has_hook_target('dh_installsystemd');},
+			"howtofix"    => 'Check if `dh_installsystemd` might need to be passed some different options (as an example `--no-start` might also need to be passed to `dh_installsystemd` if it was previously used with `dh_installinit`).',
+		},
+		{
+			"title"    => 'The third-party `dh_golang` now defaults to honoring `DH_GOLANG_EXCLUDES` also when installing',
+			"howtofix" => 'If the package uses `dh_golang` and `DH_GOLANG_EXCLUDES`, check if the resulting `.deb` is as expected. Set `DH_GOLANG_EXCLUDES_ALL` to `false` to revert to the previous behavior.',
+			'docs'     => [
+				"man:Debian::Debhelper::Buildsystem::golang(3)",
+			],
+		},
+		{
+			"title"       => 'The `python-distutils` build system is now removed',
+			"is_relevant" => sub {_uses_build_system('python-distutils');},
+			"howtofix"    => 'Consider replacing it with the the third-party `pybuild` build system instead.',
+		},
+	],
+	12 => [
+		{
+			"title"       => 'The `meson+ninja` build system now invokes `meson test` instead of `ninja test` during `dh_auto_test`',
+			"is_relevant" => sub {return _uses_build_system('meson+ninja') && _has_hook_target('override_dh_auto_test')},
+			"howtofix"    => 'Check the override target for `dh_auto_test` for parameters passed to `ninja test` and replace them with `meson test` compatible options',
+		},
+		{
+			"title"    => 'Abbreviated options are no longer supported',
+			"howtofix" => 'Check long options passed to `dh` or `dh_*` tools in `debian/rules` to ensure they match the documented spelling. Be extra careful when `-O` or passing arguments to `dh` are involved as they can silently discards unknown options (`dh` passes most options on via `-O`. Check the build logs).',
+		},
+		{
+			"title"    => 'The ELF related helpers (such as `dh_strip`) are no longer run for arch:all packages',
+			"howtofix" => 'Most packages will be unaffected. But check that hook targets and the resulting debs are as expected. Previous behavior can be restored by adding `dh-sequence-elf-tools` to `Build-Depends`.',
+		},
+		{
+			"title"       => 'The third-party build system `gradle` handler now runs upstream test suite during `dh_auto_test`',
+			"is_relevant" => sub {return _uses_build_system('gradle')},
+			"howtofix"    => 'If the package uses gradle, then the build may now fail if the tests do not succeed. Previous behavior can be restored by adding an empty `override_dh_auto_test:` target to `debian/rules`',
+			"validate"    => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"       => 'The `dh_installman` tool will now abort the build if it sees conflicting definitions of a man page',
+			"is_relevant" => sub {return _has_pkgfile('manpages')},
+			"howtofix"    => 'Often, the offending line can be removed from the `debian/<PACKAGE>.manpages. This problem typically occurs when upstream build system and `dh_installman` (via `debian/<PACKAGE>.manpages`) tries to install the same man page but one installs the compressed and the other installs the uncompressed variant of the man page.',
+			"validate"    => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"    => 'The `dh_auto_*` tools now reset the environment variable `HOME` + `XDG_*`',
+			"howtofix" => 'Typically, packages are unaffected as these variables are not writable on the Debian build servers.',
+		},
+
+		{
+			"title"       => 'The `dh` command now errors out on hook targets for obsolete commands such as `override_dh_systemd_enable`',
+			"is_relevant" => sub {return _has_hook_target_for_cmd('dh_systemd_enable') || _has_hook_target_for_cmd('dh_systemd_start')},
+			"howtofix"    => 'Remove the obsolete hook targets',
+			"validate"    => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"    => 'The `dh_missing` command now defaults to `--fail-missing`',
+			"howtofix" => 'Ensure the package builds, adding paths to `debian/not-installed` if they are not relevant. Alternatively, override `dh_missing` and request the desired behavior.',
+			"validate" => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"       => 'The `dh_installtmpfiles` is now run by default and replaces the tmpfiles handling from `dh_installsystemd`',
+			"is_relevant" => sub {return _has_hook_target('override_dh_installsystemd')},
+			"howtofix"    => 'Any overrides for `dh_installsystemd` might need to be reapplied to `dh_installtmpfiles`',
+		},
+		{
+			"title"       => 'The `dh_installtmpfiles` expects `debian/<PACKAGE>.tmpfiles` rather than `debian/<PACKAGE>.tmpfile`',
+			"is_relevant" => sub {return _has_pkgfile('tmpfile')},
+			"howtofix"    => 'Rename the files to match the new naming convention.',
+		},
+		{
+			"title"    => 'Many of the `dh_*` tools now support limited variable expansion via `${foo}`',
+			"howtofix" => "Some uses of `dh-exec` can be replaced by this feature. Note: filtering and renaming support still requires `dh-exec`.",
+		},
+		{
+			"title"       => 'The `dh` command will now skip hook targets for `dh_auto_test`, `dh_dwz`, and `dh_strip` if the relevant `DEB_BUILD_OPTIONS` is set (`nocheck` + `nostrip`)',
+			"is_relevant" => sub {return _has_hook_target('dh_auto_test') || _has_hook_target('dh_dwz') || _has_hook_target('dh_strip')},
+			"howtofix"    => "Ensure none of the hook targets for these commands are relevant when they would be skipped. If they are relevant, move them to a different hook target (such as `execute_after_dh_build`).",
+		},
+		{
+			"title"       => 'The `cmake` build system now passes `-DCMAKE_SKIP_INSTALL_ALL_DEPENDENCY=ON` to `cmake`',
+			"is_relevant" => sub {return _uses_build_system('cmake')},
+			"howtofix"    => "This can affect the installation step (such as `dh_auto_install`). Previous behavior can be restored by overriding `dh_auto_configure` with `dh_auto_configure -- -DCMAKE_SKIP_INSTALL_ALL_DEPENDENCY=OFF ...`",
+		},
+	],
+	13 => [
+		{
+			"title"       => "The `dh_installmodules` command moved dest path from /etc to /usr/lib/modprobe.d.",
+			"howtofix"    => "If the package uses `dh_installmodules`, then `rm_conffile` migration is necessary (see `man:dh_installdeb(1)`). Otherwise, it is done.",
+			"is_relevant" => sub {return _has_pkgfile('modprobe') || _has_hook_target_for_cmd('dh_installmodules')},
+			"careful"     => "Orphaned `conffiles`.",
+		},
+		{
+			"title"            => "The order of `dh_strip_nondeterminism`, `dh_compress`, and `dh_fixperm` has changed.",
+			"is_relevant"      => \&_uses_dh,
+			"howtofix"         => "Do a rebuild and validate everything behaves as expected - including checking the generated `.deb` files. Be extra careful of unexpected permissions changes or third-party add-ons no longer working as expected.",
+			"careful"          => "Silent misbuilds (invalid permissions)",
+		},
+		{
+			"title"       => "The `dh_installsysusers` tool is now included in the default sequence.",
+			"is_relevant" => \&_uses_dh,
+			"howtofix"    => "Remove any manual activation of the `installsysusers` sequence. If you have hook targets that call the helper, they may no longer be necessary.",
+		},
+
+		{
+			"title"            => "The `dh_installalternatives` tool is now run after `dh_link`",
+			"howtofix"         => "Do a rebuild plus install test to validate everything behaves as expected.",
+			"is_relevant"       => sub {return _uses_dh() && _has_pkgfile('alternatives')},
+		},
+		{
+			"title"            => "The `dh_dwz` is no longer included in the default sequence",
+			"howtofix"         => "If still needed, add `dh-sequence-dwz` to `Build-Depends-Arch`. Otherwise, remove any hook targets for the command. Note, this change will cause a lot of noise in the diffoscope output if it used when validating the upgrade.",
+			"is_relevant"       => sub {
+				return 1 if _has_hook_target_for_cmd('dh_dwz');
+				for my $p (getpackages()) {
+					return _uses_dh() if not package_is_arch_all($p);
+				}
+				return 0;
+			},
+		},
+		{
+			"title"       => "Hook targets for `dh_gconf` will now cause an error",
+			"howtofix"    => "Remove any lingering hook targets. A re-build will catch the issues.",
+			"is_relevant" => sub {return _has_hook_target_for_cmd('dh_gconf')},
+			"validate"    => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"    => "New helper `dh_computeautosubstvars` has been introduced to the default sequence.",
+			"is_relevant" => sub {return _has_hook_target('execute_before_dh_gencontrol') || _has_hook_target('override_dh_gencontrol')},
+			"howtofix" => "Ensure nothing in the package changes between `dh_computeautosubstvars` and `dh_gencontrol`. Move affected hooks to `execute_after_dh_installdeb` (as an example).",
+		},
+		{
+			"title"       => "The `dh_auto_install` default for `--destdir` changed for single binary source packages without `single-binary` add-on.",
+			"is_relevant" => sub {return _is_single_binary_addon_candidate_pending_opt_in() || (_is_single_binary_package() && _has_hook_target("override_dh_auto_install"))},
+			"howtofix"    => "Add `dh-sequence-single-binary` to `Build-Depends` (keep previous behavior with no overrides of `dh_auto_install`) or pass `--without single-binary` to `dh` (accept new behavior or overriding of `dh_auto_install`).",
+		},
+		{
+			"title"       => "The `dh` sequencer will (with a warning) default to activating the `single-binary` sequence for single binary source packages.",
+			"is_relevant" => sub {return _is_single_binary_addon_candidate_pending_opt_in()},
+			"howtofix"    => "Add `dh-sequence-single-binary` to `Build-Depends` (keep previous behavior and no overrides of `dh_auto_install`) or pass `--without single-binary` to `dh` (accept new behavior or overriding of `dh_auto_install`).",
+		},
+		{
+			"title"    => "The `dh_installsystemduser` tool now enables and starts/stops user level services by default.",
+			"howtofix" => "If the package has user level `systemd` services, validate that the new default works for the services in question.",
+			"careful"  => "Silent misbuilds (user services behaving differently that desired)",
+		},
+		{
+			"title"    => "The `dh_gencontrol` will now apply relationship variables automatically.",
+			"howtofix" => 'For most packages, this requires no changes other than cleaning up cases of `Depends: ${misc:Depends}, ${shlibs:Depends}`. But if the package demotes substvars (`Recommends: ${misc:Depends}`), then they will have to adapt (see docs).',
+			"docs"     => [
+				"<https://lists.debian.org/debian-devel/2024/02/msg00230.html>",
+				"<https://lists.debian.org/debian-devel/2024/03/msg00030.html>",
+			],
+			'lintian'  => '#1067653',
+		},
+		{
+			"title"       => 'The `dh_gencontrol` will now default to using `${shlibs:Pre-Depends}` for packages that are `Essential: yes`',
+			"is_relevant" => sub {
+				for my $p (getpackages()) {
+					return 1 if package_is_essential($p);
+				}
+				return 0;
+			},
+			"howtofix"    => 'Instances of `Pre-Depends: ${shlibs:Depends}` can now be removed since relationship variables are applied automatically, and `Essential: yes` makes `dh_shlibdeps` use `${shlibs:Pre-Depends}` by default.',
+			"docs"     => [
+				"<https://lists.debian.org/debian-devel/2024/02/msg00230.html>",
+				"<https://lists.debian.org/debian-devel/2024/03/msg00030.html>",
+			],
+			'lintian'     => '#1067653',
+		},
+		{
+			"title"    => 'The underlying build system of `dh_auto_install` command can now ensure minimal permissions (`chmod -R u+rwX`).',
+			"howtofix" => 'Third-party build systems will need a code change to support this. For `debhelper` provided build systems that **supports** `install` (such as `autoconf`, `meson`, `cmake`), this is done by default and any `execute_after_dh_auto_install` to run `chmod -R u+rwX` can be removed.',
+		},
+		{
+			"title"               => 'The `debhelper` configuration files without a package prefix (`debian/install`) will now cause a warning for source packages that build 2+ binary packages. Will become an error in compat 15.',
+			"is_relevant"         => sub {return not _is_single_binary_package();},
+			"auto_migration"      => "debputy migrate-from-dh --migration-target=dh-package-prefixed-config-files",
+			"auto_migration_deps" => ['debputy (>= 0.1.73~)', 'debhelper (>= 13.26~)'],
+			"howtofix"            => "Rename files like `debian/install` to `debian/<PACKAGE>.install` (etc.). Notable exceptions are `debian/changelog`, `debian/NEWS` and `debian/copyright`.",
+		},
+		{
+			"title"       => 'The `debhelper` configuration files using "name"-segment and without a package prefix (`debian/install`) will now cause a warning. Will become an error in compat 15.',
+			"is_relevant" => \&_uses_name,
+			"howtofix"    => "Rename files like `debian/bar.service` to `debian/<PACKAGE>.bar.service` (etc.) where you have `dh_command --name bar`.",
+		},
+		{
+			"title"    => 'The `debhelper` configuration files no longer support "name"-segment and architecture restrictions by default. Helpers must explicitly request support.',
+			"howtofix" => 'Most packages will be unaffected. However, if the package uses a "name"-segment (`dh_foo --name ...`) or architecture restrictions in the filename, then the helper may no longer support it. Approach the maintainer of the tool and request support if it is relevant.',
+		},
+		{
+			"title"       => 'The `cmake` build system now passes `-DCMAKE_BUILD_RPATH_USE_ORIGIN=ON`',
+			"is_relevant" => sub {return _uses_build_system('cmake');},
+			"howtofix"    => 'Most packages will be unaffected. However, check that the package still works as expected if it relies on `RPATH`.',
+			"careful"     => "Silent misbuilds (might build successful, but the binary may fail at runtime due to `RPATH` changes)",
+		},
+		{
+			"title"       => 'The `cmake` build system now passes `ASFLAGS` from `dpkg-buildpackage` as `ASMFLAGS`',
+			"is_relevant" => sub {return _uses_build_system('cmake');},
+			"howtofix"    => 'Most packages will be unaffected as the default for `ASFLAGS` is empty. However, depending on the value of various `DEB_*` variables, it might be non-empty and will now be picked up by `cmake`. Additionally, you may now be able to remove manual passing of `ASFLAGS` to `cmake`.',
+			"careful"     => "Silent misbuilds (might build successful, but the binary may fail at runtime due to `ASMFLAGS` containing flags thát affects runtime behavior)",
+		},
+		{
+			"title"       => 'The `cmake` build system now uses `cmake --install` rather than `make install` in `dh_auto_install`',
+			"is_relevant" => sub {return _uses_build_system('cmake') && _has_hook_target('override_dh_auto_install')},
+			"howtofix"    => 'Check the override target for `dh_auto_install` for parameters passed to `make install` and replace them with `cmake --install` compatible options',
+		},
+		{
+			"title"       => 'The `meson` build system now passes `--auto-features=enabled`',
+			"is_relevant" => sub {return _uses_build_system('meson')},
+			"howtofix"    => 'Check if any `meson` features need to be explicitly disabled.',
+		},
+		{
+			"title"       => 'The `meson+ninja` build system now invokes `meson install` instead of `ninja install` during `dh_auto_install`',
+			"is_relevant" => sub {return _uses_build_system('meson+ninja') && _has_hook_target('override_dh_auto_install')},
+			"howtofix"    => 'Check the override target for `dh_auto_install` for parameters passed to `ninja install` and replace them with `meson install` compatible options',
+		},
+		{
+			"title"       => 'The `debian/compat` file has been replaced by `debhelper-compat (= 14)` or `X-DH-Compat`.',
+			"is_relevant" => sub {return _has_file('debian/compat')},
+			"howtofix"    => 'Replace `debian/compat` with `debhelper-compat (= 14)` in `Build-Depends` for stable compat levels. For experimental ones, use the new `X-DH-Compat` field instead',
+			"validate"    => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+			'lintian'     => '#1072741',
+		},
+		{
+			"title"    => 'The `dh_installtmpfiles` now passes `--remove` on package removal and `--purge` on package purge to `systemd-tmpfiles.',
+			"howtofix" => 'Most packages should be unaffected by this. The purge side is conditionally guarded on the `--purge` (`systemd` v256 or later).',
+		},
+		{
+			"title"    => 'The `dh_lintian` no longer accepts architecture specific `lintian-overrides` files for `Multi-Arch: same` packages.',
+			"is_relevant" => sub { return _has_pkgfile("lintian-overrides"); },
+			"howtofix" => "If affected, merge the `lintian-overrides` files into a single `lintian-overrides` file that uses `lintian`'s architecture specific overrides",
+			"validate" => "A successful rebuild is sufficient to confirm whether this item is a problem.",
+		},
+		{
+			"title"    => 'The `dh_qmldeps` no longer demotes packages.',
+			"is_relevant" =>  sub {return _has_pkgfile("qmldeps") || _has_addon("qmldeps")},
+			"howtofix" => "Remove the demoted qml-modules from the dependency field and use -d <dependency field> in <pkg.qmldeps> to make sure the dependencies of qml files end up in the correct dependency field.",
+			"validate" => "Check that the dependencies end up the expected dependency fields.",
+		},
+	],
+	14 => [
+		{
+			"title"       => "The `single-binary` add-on is no longer activated implicitly.",
+			"is_relevant" => sub {return _is_single_binary_addon_candidate_pending_opt_in()},
+			"howtofix"    => "Ensure the resulting binary package is not missing content. Any `--without single-binary` passed to `dh` can now be removed without triggering the warning from compat 14.",
+			"careful"     => "Rebuild might cause files to be missing in the resulting binary package.",
+		},
+		{
+			"title"       => 'The `debhelper` configuration files without a package prefix (`debian/install`) will now cause an error for source packages that build 2+ binary packages.',
+			"is_relevant" => sub {return not _is_single_binary_package();},
+			"howtofix"    => "Rename files like `debian/install` to `debian/<PACKAGE>.install` (etc.). Notable exceptions are `debian/changelog`, `debian/NEWS` and `debian/copyright`.",
+		},
+		{
+			"title"       => 'The `debhelper` configuration files using "name"-segment and without a package prefix (`debian/install`) will now cause an error.',
+			"is_relevant" => \&_uses_name,
+			"howtofix"    => "Rename files like `debian/bar.service` to `debian/<PACKAGE>.bar.service` (etc.) where you have `dh_command --name bar`.",
+		},
+	]
+);
+
+sub _linkify {
+	my ($arg) = @_;
+	if ($arg =~ m/^man:(\S+)[(]([^)]+)[)]$/) {
+		my ($name, $section) = ($1, $2);
+		return "[${arg}](https://manpages.debian.org/${name}.${section})";
+	}
+	if ($arg =~ m/^#(\d+)$/) {
+		return "[${arg}](https://bugs.debian.org/$1)";
+	}
+	return $arg;
+}
+
+sub _process_upgrade_items {
+	my ($upgrade_items) = @_;
+	my (@relevant, @irrelevant);
+	for my $item (@{$upgrade_items}) {
+		my @template = (
+			"#### $item->{title}",
+			'',
+			'Checklist:',
+			'',
+			' * [ ] Reviewed if this item is relevant.',
+			' * [ ] Performed the relevant migration (if this item is relevant and anything was needed).',
+			'',
+		);
+		if (defined(my $auto_migration = $item->{'auto_migration'})) {
+			my $auto_migration_deps = $item->{'auto_migration_deps'};
+			my @commands;
+			if (defined($auto_migration_deps)) {
+				my $deps = escape_shell(join(", ", @{$auto_migration_deps}));
+				push(@commands, "apt satisfy ${deps}");
+			}
+			push(@commands, $auto_migration);
+			push(@template,
+				'Tool-assisted migration:',
+				'',
+				'```shell',
+				'',
+				# We need an extra newline for proper formatting with `markdown`
+				(map { "    $_\n" } @commands),
+				'```',
+				'',
+			);
+		}
+		if (defined(my $howtofix = $item->{'howtofix'})) {
+			push(@template, "Manual migration: $howtofix", '');
+		}
+		if (defined(my $careful = $item->{'careful'})) {
+			push(@template, "**Risk** if not processed correctly: ${careful}", '');
+		}
+		if (defined(my $validate = $item->{'validate'})) {
+			push(@template, "How to validate if this item is relevant: ${validate}", '');
+		}
+		if (defined(my $lintian = $item->{'lintian'})) {
+			my $link = _linkify($lintian);
+			push(@template, "Lintian: ${link}", '');
+		}
+		if (defined(my $docs = $item->{'docs'})) {
+			push(@template, "Related docs:", '');
+			for my $doc (map { _linkify($_) } @{$docs}) {
+				push(@template, " * ${doc}");
+			}
+			push(@template, '');
+		}
+		my $has_heuristic = exists($item->{"is_relevant"}) ? 1 : 0;
+		my $is_relevant_heuristic = $item->{"is_relevant"} // sub { return 1; };
+		my $is_relevant = $is_relevant_heuristic->();
+		if ($has_heuristic) {
+			my $result = $is_relevant ? "Manual review needed" : "Probably irrelevant to this package";
+			push(@template, "Heuristic-Result: ${result}");
+		} else {
+			push(@template, "Heuristic-Result: N/A, manual review required");
+		}
+		push(@template, '');
+
+		my $processed_item = join("\n", @template);
+		if (not $has_heuristic or $is_relevant) {
+			push(@relevant, $processed_item);
+		} else {
+			push(@irrelevant, $processed_item);
+		}
+	}
+	return (\@relevant, \@irrelevant);
+}
+
+
+sub compat_upgrade_checklist {
+	_assert_debian_control_exists();
+    _allow_unsafe_execution();
+    require Getopt::Long;
+    Getopt::Long::config('no_ignore_case');
+	my $highest_stable = Debian::Debhelper::Dh_Lib::HIGHEST_STABLE_COMPAT_LEVEL;
+	$highest_stable //= Debian::Debhelper::Dh_Lib::MAX_COMPAT_LEVEL;
+	my $target_compat = $highest_stable;
+	my %options = (
+		"target-compat=i" => \$target_compat,
+	);
+	my (undef, $declared_compat, undef) = Debian::Debhelper::Dh_Lib::get_compat_info();
+    Getopt::Long::GetOptionsFromArray(\@ARGV, %options)
+        or error("Could not parse the arguments");
+	if (@ARGV) {
+        my $value = $ARGV[0];
+        error("$COMMAND: No non-options supported - please remove ${value}");
+    }
+	if ($target_compat > Debian::Debhelper::Dh_Lib::MAX_COMPAT_LEVEL) {
+		my $max_level = Debian::Debhelper::Dh_Lib::MAX_COMPAT_LEVEL;
+		warning("The compat level ${target_compat} is higher than the max level (${max_level}) supported by this version of debhelper. ");
+		exit(0);
+	}
+	if ($target_compat <= $declared_compat) {
+		if ($target_compat != $declared_compat) {
+			error("Going from compat ${declared_compat} to ${target_compat} would be a downgrade, which is not supported");
+		}
+		warning("The package is already at ${target_compat}.");
+		exit(0);
+	}
+	if ($declared_compat < Debian::Debhelper::Dh_Lib::MIN_COMPAT_LEVEL and not exists($UPGRADE_CHECKLIST_WHEN_UPGRADING_FROM{$declared_compat})) {
+		error("The compat level ${declared_compat} is obsolete and has no upgrade checklist. Please review `man 7 debhelper-obsolete-compat` for a checklist.");
+	}
+	my $source = sourcepackage();
+	my $DH_TOOL_VERSION = "(unknown; git checkout)";
+	eval {
+		require Debian::Debhelper::Dh_Version;
+		$DH_TOOL_VERSION = $Debian::Debhelper::Dh_Version::version;
+	};
+
+	my @checklist = (
+		"# Upgrade checklist for ${source}\n",
+		'',
+		"This is an auto-generated `debhelper` compat upgrade checklist for ${source}.",
+		"It was generated by `dh_assistant` version ${DH_TOOL_VERSION}",
+		'',
+		"The upgrade checklist will attempt to filter out irrelevant items. However, the",
+		"detection code is not 100% reliable. Be careful with trusting it blindly.",
+		'',
+		'This checklist is based on the full checklist in ' . _linkify('man:debhelper-compat-upgrade-checklist(7)') . '.',
+		'',
+		"Target compat was: ${target_compat}",
+		'',
+		'[man:debhelper-compat-upgrade-checklist(7)]: https://manpages.debian.org/unstable/debhelper/debhelper-compat-upgrade-checklist.7.en.html',
+		'',
+	);
+	for my $compat (($declared_compat+1..$target_compat)) {
+		my $prev_compat = $compat - 1;
+		my $items = $UPGRADE_CHECKLIST_WHEN_UPGRADING_FROM{$prev_compat};
+		my $compat_warning = "";
+		$compat_warning = " [EXPERIMENTAL]" if $compat > $highest_stable;
+		push(@checklist,
+			"## Upgrading from ${prev_compat} to ${compat}${compat_warning}",
+			'',
+		);
+		if (not defined($items)) {
+			push(
+				@checklist,
+				"Sorry, no upgrade checklist generator was created for ${prev_compat} to ${compat}.",
+				'Please review [man:debhelper-compat-upgrade-checklist(7)] for the checklist.',
+				'Patches/contributions to replace this placeholder with a proper upgrade checklist is welcome.',
+				'',
+			);
+			next;
+		}
+		my ($relevant_items, $irrelevant_items) = _process_upgrade_items($items);
+
+		if (@{$relevant_items}) {
+			push(
+				 @checklist,
+				"### Items that requires manual review",
+				'',
+				'The items listed here are items that introspection found "likely" to be relevant',
+				"to `${source}` OR there was no automated way of telling the package was affected.",
+				'Please review the items, confirm whether they apply and then fix them',
+				'',
+				@{$relevant_items}
+			);
+		}
+		if (@{$irrelevant_items}) {
+			push(
+				 @checklist,
+				"### Items that might not be relevant",
+				'',
+				'The items listed here are items that introspection found "unlikely" to be relevant',
+				"to `${source}`. However, `dh_assistant`'s ability to introspect correctly is limited",
+				"and may be inaccurate. Please skim the list to see if any of the items might be relevant.",
+				'',
+				@{$irrelevant_items}
+			);
+		}
+	}
+
+	print(join("\n", @checklist) . "\n");
+	return;
 }
 
 

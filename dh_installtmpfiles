@@ -34,6 +34,8 @@ and --purge when the package is purged. This allows one to use the
 tmpfiles.d mechanism to clean up files that are no longer needed after a
 package has been removed/purged.
 
+The B<dh_installtmpfiles> command will also add dependencies for any
+installed B<tmpfiles> configuration files via B<${misc:Depends}>.
 
 =head1 OPTIONS
 
@@ -54,8 +56,7 @@ and also the base name used for the installed version of the file.
 =item debian/I<package>.tmpfiles
 
 If this exists, it is installed into F<usr/lib/tmpfiles.d/> in the
-package build directory. Note that the C<tmpfiles.d> mechanism is
-currently only used by systemd.
+package build directory.
 
 =item debian/I<package>.tmpfile
 
@@ -150,13 +151,13 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 
 	if (@remove) {
 		autoscript($package, 'postrm', 'postrm-init-tmpfiles-remove', {
-			'TMPFILES_REMOVE' => join("\n", @remove),
+			'TMPFILES_REMOVE' => join("\n", sort(@remove)),
 		});
 	}
 
 	if (@purge) {
 		autoscript($package, 'postrm', 'postrm-init-tmpfiles-purge', {
-			'TMPFILES_PURGE' => join("\n", @purge),
+			'TMPFILES_PURGE' => join("\n", sort(@purge)),
 		});
 	}
 }

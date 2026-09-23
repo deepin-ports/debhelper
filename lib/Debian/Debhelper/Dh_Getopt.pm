@@ -96,6 +96,11 @@ sub getoptions {
 	if ( ! -f 'debian/control' or ! compat(12, 1)) {
 		Getopt::Long::config('no_auto_abbrev');
 	}
+	if (!$params{test} && $params{ignore_unknown_options}) {
+		Getopt::Long::config('pass_through');
+	} else {
+		Getopt::Long::config('no_pass_through');
+	}
 
 	my @test;
 	my %options=(	
@@ -183,6 +188,9 @@ sub getoptions {
 				ignore_unknown_options => 0,
 				test => 1)) {
 			getoptions([$opt], %params);
+		} else {
+			# For `dh_assistant`
+			push(@{$dh{UNKNOWN_TEST_ARGV}}, $opt);
 		}
 	}
 
@@ -252,13 +260,13 @@ sub parseopts {
 	# want us to act on them all. Note we have to do this before excluding
 	# packages out, below.
 	if (! defined $dh{DOPACKAGES} || ! @{$dh{DOPACKAGES}}) {
-		my $do_exit = 0;
+		my $empty_combination = 0;
 		if ($profile_excluded_pkg) {
 			if (! $dh{BLOCK_NOOP_WARNINGS}) {
 				warning('All requested packages have been excluded'
 					. ' (e.g. via a Build-Profile or due to architecture restrictions).');
 			}
-			$do_exit = 1;
+			$empty_combination = 1;
 		}
 		if ($dh{DOINDEP} || $dh{DOARCH}) {
 			# User specified that all arch (in)dep package be
@@ -266,10 +274,14 @@ sub parseopts {
 			if (! $dh{BLOCK_NOOP_WARNINGS}) {
 				warning("You asked that all arch in(dep) packages be built, but there are none of that type.");
 			}
-			$do_exit = 1;
+			$empty_combination = 1;
 		}
-		exit(0) if $do_exit;
-		push @{$dh{DOPACKAGES}},getpackages("both");
+		if ($empty_combination) {
+			exit(0) if not $params{'allow_empty_package_selection'};
+			$dh{DOPACKAGES} = [];
+		} else {
+			push(@{$dh{DOPACKAGES}},getpackages("both"));
+		}
 	}
 
 	# Remove excluded packages from the list of packages to act on.
@@ -314,7 +326,8 @@ sub parseopts {
 			warning("No packages to build. Possible architecture mismatch: " . hostarch() .
 				", want: " . join(" ", sort keys %archs));
 		}
-		exit(0);
+		exit(0) if not $params{'allow_empty_package_selection'};
+		$dh{'_EMPTY_SELECTION'} = 1;
 	}
 
 	if (defined $dh{U_PARAMS}) {

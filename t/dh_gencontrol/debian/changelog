@@ -2,4 +2,5 @@ foo (1.0-1) unstable; urgency=low
 
   * Initial release. (Closes: #XXXXXX)
 
- -- Test <testing@nowhere.example.com>  Mon, 11 Jul 2016 18:10:59 +0200
+ -- Test <testing@nowhere.example.com>  Wed, 10 Dec 2025 11:49:13 +0200
+

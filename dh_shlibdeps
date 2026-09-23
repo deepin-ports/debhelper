@@ -97,6 +97,8 @@ on libbar1 as follows:
 	
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 init(options => {
 	"L|libpackage=s@" => \$dh{LIBPACKAGE},
 	"dpkg-shlibdeps-params=s" => \$dh{U_PARAMS},
@@ -184,8 +186,11 @@ on_pkgs_in_parallel {
 			if (defined($dh{LIBPACKAGE})) {
 				@opts = map { '-S' . tmpdir($_) } @{$dh{LIBPACKAGE}};
 			}
-			push(@opts, '-dPre-Depends') if not compat(14) and package_is_essential($package);
-			push @opts, "-tudeb" if is_udeb($package);
+			if (compat(13)) {
+				push @opts, "-tudeb" if is_udeb($package);
+			} else {
+				push(@opts, "--package=${package}");
+			}
 
 			if ($dh{L_PARAMS}) {
 				foreach (split(/:/, $dh{L_PARAMS})) {

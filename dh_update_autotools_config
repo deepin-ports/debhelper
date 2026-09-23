@@ -25,6 +25,8 @@ and restored by B<dh_clean>.
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 init();
 
 for my $basename (qw(config.guess config.sub)) {

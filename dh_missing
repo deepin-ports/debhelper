@@ -83,13 +83,15 @@ This is the default in compat 13 and later.
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES path(debian/not-installed)
+
 init(options => {
 	"list-missing" => \$dh{LIST_MISSING},
 	"fail-missing" => \$dh{FAIL_MISSING},
 	"sourcedir=s" => \$dh{SOURCEDIR},
 });
 
-my (@installed, %helpers, %helpers_basename);
+my (@installed, %helpers);
 
 my $srcdir = '.';
 if (defined($dh{SOURCEDIR})) {
@@ -202,8 +204,13 @@ if (@missing) {
 		my $basename = basename($file);
 		if (exists($seen_basename{$basename})) {
 			my $alt_source = $seen_basename{$basename};
+			if ($file eq $alt_source) {
+				warning("$file exists in $srcdir but is not installed to anywhere ");
+				warning("A file with an equivalent path was found but did not get installed. Note that dh_install prefers paths in ./ over paths in ./debian/tmp.");
+			} else {
 			$had_related_files //= [$file, $alt_source];
 			warning("$file exists in $srcdir but is not installed to anywhere (related file: \"$alt_source\")");
+			}
 		} else {
 			warning("$file exists in $srcdir but is not installed to anywhere ");
 		}

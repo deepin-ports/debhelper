@@ -81,6 +81,10 @@ on multiple packages.  If you need this option, you will generally
 need to combine it with B<-p> to ensure exactly one package is acted
 on.
 
+The B<X-Doc-Main-Package> field can be used instead since
+B<debhelper/13.28>. It has similar semantics but does not require
+command line options.
+
 =item B<-X>I<item>, B<--exclude=>I<item>
 
 Exclude files that contain I<item> anywhere in their filename from
@@ -137,6 +141,7 @@ foreach my $package (getpackages()) {
 	my @search_dirs = ('.');
 	my $skip_install = process_pkg($package) ? 0 : 1;
 	my $error_handler = $skip_install ? \&glob_expand_error_handler_silently_ignore : $default_error_handler;
+	my $target_package = compute_doc_main_package($package);
 	@search_dirs = ($dh{SOURCEDIR} // '.', default_sourcedir($package)) if not compat(10);
 	
 	my @examples;
@@ -154,9 +159,8 @@ foreach my $package (getpackages()) {
 	next if $skip_install or $nodocs;
 
 	if (@examples) {
-		my $target_package = compute_doc_main_package($package);
 		if (not defined($target_package)) {
-			warning("Cannot auto-detect main package for ${package}.  If the default is wrong, please use --doc-main-package");
+			warning("Cannot auto-detect main package for ${package}.  If the default is wrong, please use --doc-main-package or the X-Doc-Main-Package field");
 			$target_package = $package;
 		}
 		my $target_dir = "${tmp}/usr/share/doc/${target_package}/examples";

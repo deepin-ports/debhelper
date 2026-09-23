@@ -545,7 +545,15 @@
     {
       "detection-method": "dh.pkgfile",
       "pkgfile": "modprobe",
-      "install-pattern": "etc/modprobe.d/{name}.conf",
+      "dh-compat-rules": [
+        {
+          "starting-with-compat-level": 14,
+          "install-pattern": "usr/lib/modprobe.d/{name}.conf"
+        },
+        {
+          "install-pattern": "etc/modprobe.d/{name}.conf"
+        }
+      ],
       "file-categories": [
         "ppf-file"
       ],
@@ -564,7 +572,7 @@
         "dh-file-list"
       ],
       "debhelper-commands": [
-        "dh_installmodules"
+        "dh_ucf"
       ]
     },
 

@@ -53,6 +53,7 @@ tests will be performed.
 =cut
 
 # PROMISE: DH NOOP WITHOUT cli-options(BUILDSYSTEM) buildsystem(test)
+# INTROSPECTABLE: CONFIG-FILES NONE
 
 if (get_buildoption("nocheck")) {
 	exit 0;

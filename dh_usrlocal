@@ -72,6 +72,7 @@ Debian policy, version 2.2
 init();
 
 # PROMISE: DH NOOP WITHOUT tmp(usr/local) cli-options()
+# INTROSPECTABLE: CONFIG-FILES NONE
 
 foreach my $package (@{$dh{DOPACKAGES}}) {
 	my $tmp = tmpdir($package);

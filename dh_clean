@@ -78,6 +78,8 @@ slash.  Any content in these directories will be removed as well.
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES path(debian/clean)
+
 init(options => {
 		'dirs-only' => \$dh{D_FLAG},
 		'keep|k' => \$dh{K_FLAG},
@@ -94,7 +96,7 @@ if ($dh{K_FLAG}) {
 # Remove the debhelper stamp file
 rm_files('debian/debhelper-build-stamp') if not $dh{D_FLAG};
 
-my (@clean_files, @clean_dirs, %seen);
+my (@clean_files, @requested_clean_files, @clean_dirs, %seen);
 
 foreach my $package (@{$dh{DOPACKAGES}}) {
 	my $tmp=tmpdir($package);
@@ -135,18 +137,18 @@ if (! $dh{D_FLAG} && ! $dh{K_FLAG}) {
 
 if (! $dh{D_FLAG}) {
 	if (@ARGV) {
-		push(@clean_files, grep { !m@/$@ } @ARGV);
+		push(@requested_clean_files, grep { !m@/$@ } @ARGV);
 		push(@clean_dirs, grep { m@/$@ } @ARGV);
 	}
 
 	if (! $dh{K_FLAG}) {
-		if (!compat(6) && -e "debian/clean") {
+		if (-e "debian/clean") {
 			my @clean=grep {
 				! excludefile($_)
 			# Silently ignore missing files - for all we know, dh_clean is run before
 			# they have been created.
 			} filearray('debian/clean', ["."], \&glob_expand_error_handler_silently_ignore);
-			push(@clean_files, grep { !m@/$@ } @clean);
+			push(@requested_clean_files, grep { !m@/$@ } @clean);
 			push(@clean_dirs, grep { m@/$@ } @clean);
 		}
 
@@ -155,6 +157,17 @@ if (! $dh{D_FLAG}) {
 	}
 }
 
+my @dir_in_clean_files = grep { ! -l && -d } @requested_clean_files;
+
+if (@dir_in_clean_files) {
+	warning("Removal of the following *files* that turned out to be *directories*:");
+	warning("");
+	warning(" * $_") for @dir_in_clean_files;
+	warning("");
+	error("If the removals of these directories were intentional, ensure it ends with a trailing slash.");
+}
+
+unshift(@clean_files, @requested_clean_files);
 xargs(\@clean_files, 'rm', '-f', '--') if @clean_files;
 xargs(\@clean_dirs, 'rm', '-fr', '--') if @clean_dirs;
 

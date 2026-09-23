@@ -7,7 +7,8 @@ if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-decon
 		default_mode=02775
 		default_group=staff
 	fi
-	while read line; do
+	while read -r line; do
+		# shellcheck disable=SC2086
 		set -- $line
 		dir="$1"; mode="$2"; user="$3"; group="$4"
 		if [ "$mode" = "default" ]; then

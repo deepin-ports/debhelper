@@ -1,7 +1,287 @@
+debhelper (14.5) unstable; urgency=medium
+
+  * Revert some changes per agreement with CTTE while they
+    discuss #1141909 to enable backports.
+    - Revert "dh_installsystemd: also add tmpfiles deps in
+      compat 12"
+    - Revert "dh_installtmpfiles: add dependency on tmpfiles
+      implementation"
+
+ -- Niels Thykier <niels@thykier.net>  Thu, 17 Sep 2026 16:11:41 +0000
+
+debhelper (14.4) unstable; urgency=medium
+
+  [ Jeremy Bícha ]
+  * meson: Use meson install --no-rebuild by default for compat 14+
+    (Closes: #1142577)
+
+  [ Athos Ribeiro ]
+  * Improve automated substvar injection documentation
+
+  [ Charles Plessy ]
+  * Note that `dh_installdocs` does not copy empty files.
+
+  [ Johannes Schauer Marin Rodrigues ]
+  * autoscripts/postinst-init-nostart: missing DPKG_ROOT
+
+  [ Niels Thykier ]
+  * dh_installsystemduser: Avoid warnings when unit is declared unrestartable
+  * dh_computeautosubstvars: Improve auto-detection for Commands field
+    (Closes: #114716)
+  * Revert "Remove mention of `single-binary` from compat 15 - it happens in 14"
+  * Improve warning message for implicit `single-binary` addon.
+    Thanks to Andrey Rakhmatullin <wrar@debian.org> and
+    Jeremy Bicha <jbicha@debian.org> (Closes: #1144222)
+
+  [ Luca Boccassi ]
+  * upgrade-checklist: update note on user units handling (Closes: #1142730)
+
+  [ Américo Monteiro ]
+  * Update on Portuguese translation of the man pages (Closes: #1142220)
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 13 Sep 2026 08:22:22 +0000
+
+debhelper (14.3) unstable; urgency=medium
+
+  [ Niels Thykier ]
+  * dh_shlibdeps: fix off-by-one in compat check and migrate
+    to `dpkg`'s `--package` option. Thanks to Sven Joachim <svenjoac@gmx.de>
+    (Closes: #1141433)
+  * debhelper.pod: Explicitly mention that a global `DH_COMPAT` is not
+    recommended. Thanks to Nilesh Patra <nilesh@debian.org>
+
+  [ Johannes Schauer Marin Rodrigues ]
+  * Test autoscripts templates with shellcheck in `debhelper`'s own
+    test suite
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 05 Jul 2026 09:47:44 +0000
+
+debhelper (14.2) unstable; urgency=medium
+
+  [ Adrian Bunk ]
+  * upgrade-checklist: Remove remnants of the reverted pam change
+  * upgrade-checklist: Remove comment regarding pre-stable compat 14
+
+  [ Luca Boccassi ]
+  * dh_installsystemd: also add tmpfiles deps in compat 12
+    (Closes: #1140654)
+
+ -- Niels Thykier <niels@thykier.net>  Wed, 24 Jun 2026 15:30:16 +0000
+
+debhelper (14.1) unstable; urgency=medium
+
+  * dh_installpam: Revert compat 14 change at request of the `pam`
+    maintainers.  (Closes: #1140119)
+
+ -- Niels Thykier <niels@thykier.net>  Tue, 16 Jun 2026 18:44:38 +0000
+
+debhelper (14.0) unstable; urgency=medium
+
+  * d/changelog:
+    - Move an attribution to the correct author for 13.32
+    - some lines to avoid too long line warnings
+  * Remove noise from lintian about `alien-tag
+  * Fix a bug where `debian/compat` was rejected in compat 13 and
+    older when compat 14 was stable.
+  * Declare compat 14 as stable
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 14 Jun 2026 09:21:22 +0000
+
+debhelper (13.32) unstable; urgency=medium
+
+  [ Johannes Schauer Marin Rodrigues ]
+  * autoscripts: enable update-rc.d and deb-systemd-helper with $DPKG_ROOT
+  * autoscripts/postrm-systemd{,-user}: stop testing for deb-systemd-helper
+  * autoscripts/postinst-systemd-restart: do not do a daemon-reload when
+    DPKG_ROOT is non-empty.
+    Thanks to Helmut Grohne <helmut@subdivi.de>
+  * dh_installtmpfiles: reproducible tmpfiles order for postrm scripts
+
+  [ Miao Wang ]
+  * filedoublearray: do not resolve symlink when converting to absolute paths
+
+  [ Niels Thykier ]
+  * dh_clean: remove obsolete `compat` check
+  * dh_installdocs: Remove mention of where doc-base files are installed.
+    Thanks to Jay Burstin <jayburstinau@gmail.com> (Closes: #1138620)
+  * Dh_Lib.pm: Fix a (consistent) typo in a var name and fix some state
+    resetting.
+  * upgrade-checklist: Avoid implying `X-DH-Compat` is the new default.
+    (Closes: #1133679)
+
+  [ Dorle Osterode ]
+  * Fix doubling of word in man page
+  * Fix meaning of "ahead of time"
+
+  [ Nilesh Patra ]
+  * Fix header for `dh_computeautosubstvars`
+  * dh_computeautosubstvars: process next package instead of returning in
+    parallel build
+  * Do not compute `Commands` for `udeb` (Closes: #1136120)
+
+  [ Charles Plessy ]
+  * Do not compress R data files.
+
+  [ Helmut Grohne ]
+  * autoconf: export standard build tools
+  * Add function get_build_tools to Dh_Lib.
+
+  [ Américo Monteiro ]
+  * Update on Portuguese translation of the man pages (Closes: #1132737)
+
+  [ Luca Boccassi ]
+  * dh_installsystemd: Remove note that `tmpfiles.d` is for `systemd`-only
+  * dh_installtmpfiles: add dependency on tmpfiles implementation
+  * dh_installtmpfiles: Remove note that `tmpfiles.d` is for `systemd`-only
+    (Closes: 1134898)
+
+  [ Sandro Knauß ]
+  * Document dh_qmldeps changes with v14.  (Closes: #1133692)
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 07 Jun 2026 11:44:59 +0000
+
+debhelper (13.31) unstable; urgency=medium
+
+  [ Niels Thykier ]
+  * dh_assistant: Add new `parse-dh-cli-args` subcommand
+  * dh: Fix description of the `dwz` add-on
+  * dh_clean: do not require `/` for symlinks to directories.
+    Thanks to David Prévot <taffit@debian.org> (Closes: #1128894)
+  * dh_installchangelogs: Require all changelog dates seen to be valid.
+    Previously, we would allow invalid dates and that causes problems.
+    With this change, we now require the dates to be valid. This may
+    bring some invalid entries out in the open in the form of FTBFS
+    bugs. These were always bugs and how we flag them.
+    (Closes: #1128372)
+
+  [ Luca Boccassi ]
+  * dh_installinit/dh_installsystemduser: stop adding dependencies
+    satisfied since bullseye/jammy
+
+  [ Nilesh Patra ]
+  * Update cutoff date in dh_installchangelogs to Bookworm release date
+  * Do not install NEWS entries beyond cutoff-date (Closes: #1128414)
+
+ -- Niels Thykier <niels@thykier.net>  Tue, 24 Feb 2026 19:21:19 +0000
+
+debhelper (13.30) unstable; urgency=medium
+
+  [ Luca Boccassi ]
+  * dh_installsystemd[user]: ensure excluded units via -X do not get
+    processed due to `Also=`
+
+  [ Niels Thykier ]
+  * dh_clean: Catch missing trailing `/` on directories
+  * d/control: Drop unnecessary `Priority: optional`
+  * dh_installchangelogs: Keep more entries if timestamp cannot be parsed
+    (Closes: #1126043)
+
+  [ Américo Monteiro ]
+  * Update on Portuguese translation of the man pages (Closes: #1124415)
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 15 Feb 2026 10:48:53 +0000
+
+debhelper (13.29) unstable; urgency=medium
+
+  [ Niels Thykier ]
+  * dh_assistant: Improve build system detection for compat checklist
+  * debhelper.pod: Provide on placement of the `#DEBHELPER#` token
+    (Closes: #1037204)
+
+  [ Alexandre Detiste ]
+  * remove transitional, virtual dh-buildinfo Provides:
+
+  [ Guillem Jover ]
+  * Pass also filename to Dpkg::Changelog::Parse::changelog_parse()
+
+  [ Peter Pentchev ]
+  * Actually add Multi-Arch: same to -dbgsym packages (Closes: #1121566)
+
+  [ Holger Wansing ]
+  * de.po: Fix some minor issues with the German translation (Closes: #1118413)
+
+  [ Américo Monteiro ]
+  * Update on Portuguese translation of man page (Closes: #1118373)
+
+ -- Niels Thykier <niels@thykier.net>  Sat, 13 Dec 2025 12:21:15 +0000
+
+debhelper (13.28) unstable; urgency=medium
+
+  [ Niels Thykier ]
+  * Add support for `X-Doc-Main-Package` field
+  * dh_assistant: Fix `--target-compat` not supporting experimental
+    compat levels.
+  * debhelper.pod: Clarify subst limit is per token
+  * dh_assistant: Fix formatting for upgrade checklist
+
+  [ Johannes Schauer Marin Rodrigues ]
+  * dh_missing: do not give suggestions about equivalent paths
+
+ -- Niels Thykier <niels@thykier.net>  Fri, 26 Sep 2025 18:25:49 +0000
+
+debhelper (13.27) unstable; urgency=medium
+
+  [ Alastair McKinstry ]
+  * Dh_Buildsystems.pm: add `fortran` as 3rd party buildsystem.
+
+  [ Niels Thykier ]
+  * dh_assistant: Document `none` as output of `which-build-system`
+  * single-binary: Recommend `debputy` to migrate config files in c14
+  * Mention `debputy` auto-migration in upgrade checklist for c14
+  * Dh_Lib.pm: Use `cp --update=none` instead `-n` (Closes: #1061610)
+  * Remove the `qmake-qt4` build system as it had no users remaining
+    (Closes: #1077604)
+  * Dh_Lib.pm: Prettify some shell escapes to make them easier to read
+  * dh_md5sums: Remove `-x` / `--include-conffiles`. It was never the
+    correct thing to do and the option(s) had no users according to
+    codesearch.d.n.
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 21 Sep 2025 09:32:06 +0000
+
+debhelper (13.26) unstable; urgency=medium
+
+  [ Niels Thykier ]
+  * dh_assistant: List files with unclear config file state
+  * dh_assistant: Provide tool-assistance migration hints for compat upgrades
+  * Regenerate POT and PO files
+
+  [ Américo Monteiro ]
+  * Updated Portuguese translation for debhelper's man page (Closes: #1111112)
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 24 Aug 2025 07:45:40 +0000
+
+debhelper (13.25) unstable; urgency=medium
+
+  [ Niels Thykier ]
+  * debhelper-documentation.json: Correct command for `.ucf` files
+  * dh: Support `DH_OVERRIDDEN_COMMAND` variable for `override` targets
+    for cases where the original command is useful as a base.
+  * debhelper.pod: Update description on automated dependencies
+  * dh_gencontrol: Fix off-by-one compat guard affecting compat 14.
+  * In compat 14: Add `Commands` field to binaries to aid `command-not-found`
+    (Closes: #638517)
+  * dh_assistant: Explicitly use `JSON::PP::{true,false}`
+  * dh_assistant: Provide a compat upgrade checklist when upgrading from
+    compat 7 and on. This can be done via the command
+    `dh_assistant compat-upgrade-checklist`.
+  * No longer run `dh_dwz` by default in compat 14+ (Closes: 1016563)
+
+  [ Andrea Pappacoda ]
+  * dh_installmodules: install .modprobe files in /usr/lib with compat 14+
+    (Closes: #1107373)
+
+  [ Alexandre Detiste ]
+  * dh_assistant: Improve wording
+
+  [ Noah Meyerhans ]
+  * dh_installsystemd: Always stop the service on remove (Closes: #1079181)
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 10 Aug 2025 06:51:00 +0000
+
 debhelper (13.24.2) unstable; urgency=medium
 
   [ Christoph Brinkhaus ]
-  * Update German translation of manpages (Closes: #1094029)
+  * Update German translation of man pages (Closes: #1094029)
 
   [ Américo Monteiro ]
   * Update on Portuguese translation of man pages (Closes: #1100357)

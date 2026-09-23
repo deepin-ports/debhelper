@@ -76,6 +76,7 @@ if (! -f 'debian/control') {
 }
 
 # PROMISE: DH NOOP WITHOUT internal(rrr)
+# INTROSPECTABLE: CONFIG-FILES NONE
 
 # By declaration; nothing requires root and this command must be a no-op in that case.
 exit 0 if $requirements eq 'none';

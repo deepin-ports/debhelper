@@ -78,6 +78,7 @@ buildsystems_init(options => {
 });
 
 # PROMISE: DH NOOP WITHOUT cli-options(BUILDSYSTEM) buildsystem(install)
+# INTROSPECTABLE: CONFIG-FILES NONE
 
 # If destdir is not specified, determine it automatically
 if (!$destdir) {

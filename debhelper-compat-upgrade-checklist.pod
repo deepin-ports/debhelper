@@ -9,6 +9,11 @@ debhelper-compat-upgrade-checklist - Upgrade checklist for supported debhelper c
 This document is an upgrade checklist of all the supported debhelper compat levels. It also
 lists all the supported debhelper compat levels.
 
+The B<dh_assistant compat-upgrade-checklist> command can provide a package specific upgrade
+checklist from compat 7 and up (requires B<debhelper/13.25> or later). Its main limitation
+is accuracy of its heuristics. Please review the documentation of L<dh_assistant(1)> for
+details.
+
 Information about how to declare the compat level is in L<debhelper(7)/COMPATIBILITY LEVELS>.
 
 If you are upgrading from a (now) obsolete compat level, then please refer to
@@ -69,7 +74,7 @@ Then you need to rename F<debian/bar.service> to F<debian/foo.bar.service>.
 
 =item v14
 
-This compatibility level is still open for development; use with caution.
+This is the recommended mode of operation.
 
 Changes from v13 are:
 
@@ -77,11 +82,16 @@ Changes from v13 are:
 
 =item -
 
-The B<dh_installpam> tool will now install PAM configuration files under
-F<< /usr/lib/pam.d/I<package> >> instead of F<< /etc/pam.d/I<package> >>.
+The B<dh_installmodules> tool will now install its
+configuration files under F<< /usr/lib/modprobe.d/I<package> >>
+instead of F<< /etc/modprobe.d >>.
 
-Please consider using the "rm_conffile" feature from
-L<dh_installdeb(1)> to ensure the proper removal of previous PAM files.
+Please consider using the "rm_conffile" feature from L<dh_installdeb(1)> to
+ensure the proper removal of previous modprobe files.
+
+Note: Retroactively change in B<debhelper/14.1> - The B<dh_installpam>
+command had a similar change, which was reverted at the request of the
+B<pam> maintainer.
 
 =item -
 
@@ -120,9 +130,20 @@ helper tool will process systemd sysusers files.
 
 =item -
 
-The B<dh_installsystemduser> tool will default to enabling systemd user units,
-start them on installation, restart them on upgrades and stop them on uninstalling
-the package.
+The B<dh_installalternatives> tool will now be run after B<dh_link> rather than after
+B<dh_installinitramfs> in the default B<dh> sequence.
+
+=item -
+
+The B<dh_dwz> command has been removed from the default sequence. If it is still desired,
+add B<dh-sequence-dwz> to B<Build-Depends-Arch> or run it in
+B<execute_before_dh_strip-arch> with B<-a> to get the closest emulation of the previous
+behavior.
+
+Note: The B<dh_dwz> command will cause a lot of differences in the generated debug symbols.
+If you use B<diffoscope> as part of your compat upgrade checks, you may want to temporarily
+use B<dh_dwz> to keep the delta reviewable while upgrading and then remove B<dh_dwz>
+afterwards.
 
 =item -
 
@@ -132,8 +153,14 @@ removed in debhelper 13.4.
 
 =item -
 
-The B<dh_installalternatives> tool will now be run after B<dh_link> rather than after
-B<dh_installinitramfs> in the default B<dh> sequence.
+A new tool called B<dh_computeautosubstvars> has been added and is now run immediately
+before B<dh_gencontrol>. If you inject commands before B<dh_gencontrol>
+(either via hook targets or third-party sequence add-on), consider moving them
+to after B<dh_installdeb> instead as the new tool generally assumes no more changes
+will occur between it is called and B<dh_gencontrol> is called.
+
+Notable exception to this assumption if you have to tweak substvars per
+L<https://lists.debian.org/debian-devel/2024/03/msg00030.html>.
 
 =item -
 
@@ -167,12 +194,20 @@ about to happen.
 
 =item -
 
+The B<dh_installsystemduser> tool will default to enabling systemd user units,
+start them on installation, restart them on upgrades and stop them on uninstalling
+the package. Units that should not be started/stopped/restarted automatically should
+be marked with the B<RefuseManualStart=yes> and/or B<RefuseManualStop=yes> unit directives.
+
+=item -
+
 The B<dh_gencontrol> tool now automatically applies relationship substvars to
 relevant fields. That means that many substvars such as B<${misc:Depends}>
 and B<${shlibs:Depends}> no longer need to be explicitly mentioned in
 F<debian/control>. This applies to any substvar named after a field that
 the installed version of B<dpkg> considers a relation or dependency-like
-field. At the time of writing, the list consists of:
+field (e.g., B<${*:Depends}>, B<${*:Recommends}>). At the time of writing, the
+list consists of:
 
 =over 4
 
@@ -242,6 +277,20 @@ Note: This change will cause false-positives from an unfixed
 L<lintian(1)>. Please check L<https://bugs.debian.org/1067653> for
 L<lintian(1)> support for this change.
 
+Finally, B<debhelper> also applies this feature the substvars for the
+following fields due to implementation details:
+
+=over 4
+
+=item -
+
+Commands
+
+See L<#638517|https://bugs.debian.org/638517> for what the field is used for.
+
+=back
+
+
 =item -
 
 The B<dh_shlibdeps> tool now defaults to using B<${shlibs:Pre-Depends}> for
@@ -249,6 +298,9 @@ packages that are B<Essential: yes>.
 
 Note due to the B<dh_gencontrol> change above, any package using B<dh_gencontrol>
 will not have to do anything for this migration.
+
+Fixed in B<debhelper/14.3>: There was a bug in the implementation that meant it
+did not trigger for compat 14 before B<debhelper/14.3>.
 
 =item -
 
@@ -299,6 +351,14 @@ using the files will trigger warnings on usage.
 
 In compat 15 (or later), this is changed to an error.
 
+For most packages, this item can be fixed by running:
+
+     apt-get satisfy 'debputy (>= 0.1.73~), debhelper (>= 13.26~)'
+     debputy migrate-from-dh --migration-target=dh-package-prefixed-config-files
+
+The only known caveat are architecture specific configuration files (such as
+F<debian/symbols.amd64> or F<debian/install.amd64>).
+
 =item -
 
 It now triggers a warning to use a packaging file without the package prefix for
@@ -311,6 +371,15 @@ if you had a F<debian/bar.service> with the following snippet in F<debian/rules>
 Then you need to rename F<debian/bar.service> to F<debian/foo.bar.service>.
 
 In compat 15 (or later), this is changed to an error.
+
+For most packages, this item can be fixed by running:
+
+     apt-get satisfy 'debputy (>= 0.1.73~), debhelper (>= 13.26~)'
+     debputy migrate-from-dh --migration-target=dh-package-prefixed-config-files
+
+The only known caveat are architecture specific configuration files. The B<debhelper>
+stack does not accept any config files that have architecture restrictions B<and>
+B<--name>. However, third-party add-ons might.
 
 =item -
 
@@ -374,12 +443,8 @@ passes extra parameters to the upstream build system should be reviewed.
 =item -
 
 The F<debian/compat> file is no longer accepted as a source for specifying the
-debhelper compat level. Put the compat level in the B<X-DH-Compat> field of
-the B<Source> stanza of F<debian/control>.
-
-Note to avoid breaking packages that already migrated to compat 14 immediately,
-while it was experimental this change is first enforced when compat 14 becomes
-stable.
+debhelper compat level. Please review L<debhelper(7)/COMPATIBILITY LEVELS>
+for alternatives.
 
 =item -
 
@@ -393,11 +458,16 @@ for packages with B<Multi-Arch: same> in F<debian/control>, since these would
 not be co-installable. Instances affected by this error should migrate to
 L<lintian(1)> architecture specific overrides.
 
+=item -
+
+The third-party B<dh_qmldeps> tool (from B<pkg-kde-tools> package) no longer
+demote detected dependencies. In v13 you get warnings about demotions. You can
+use the B<-d dependency field> in the B<debian/PKG.qmlfiles> to get the
+dependencies end up in the correct B<dependency field>.
+
 =back
 
 =item v13
-
-This is the recommended mode of operation.
 
 Changes from v12 are:
 
@@ -792,7 +862,8 @@ will now install the documentation into the path F<<
 I.e. the path can change but the documentation is still shipped in the
 I<-doc> package.
 
-The B<--doc-main-package> option can be used when the auto-detection
+The B<--doc-main-package> option (or, since debhelper/13.28, the
+B<X-Doc-Main-Package> field) can be used when the auto-detection
 is insufficient or to reset the path to its previous value if there is
 a reason to diverge from Debian policy recommendation.
 

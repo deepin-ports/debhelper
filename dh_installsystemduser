@@ -8,6 +8,8 @@ dh_installsystemduser - install systemd unit files
 
 use strict;
 use warnings;
+use List::Util qw(any);
+
 use Debian::Debhelper::Dh_Lib;
 
 our $VERSION = DH_BUILTIN_VERSION;
@@ -149,6 +151,22 @@ sub extract_key {
 	return @values;
 }
 
+sub _sysd_bool {
+	my ($value, $default_if_unknown) = @_;
+	return 1 if $value =~ m/^(?:yes|true)$/i;
+	return 0 if $value =~ m/^(?:no|false)$/i;
+	return $default_if_unknown;
+}
+
+sub is_unsafe_to_restart {
+	my ($unit_path) = @_;
+	my @refuse_start_raw = extract_key($unit_path, "RefuseManualStart");
+	my @refuse_stop_raw = extract_key($unit_path, "RefuseManualStop");
+	my $refuse_start = any { _sysd_bool($_, 0) } @refuse_start_raw;
+	my $refuse_stop = any { _sysd_bool($_, 0) } @refuse_stop_raw;
+	return $refuse_start || $refuse_stop;
+}
+
 sub list_installed_user_units {
 	my ($tmpdir, $aliases) = @_;
 
@@ -238,19 +256,19 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 		# cannot read the unit file when disabling as it has already
 		# been deleted.
 		push @args, $_ for grep { !$seen{$_}++ } extract_key($path, 'Also');
+		# Ensure excluded units do not sneak back in via Also=.
+		foreach my $x (@{$dh{EXCLUDE}}) {
+			@args = grep !/(^|\/)$x$/, @args;
+		}
 
 		push @enable_units, $name if contains_install_section($path);
-		push @start_units, $name;
+		push @start_units, $name if not is_unsafe_to_restart($path);
 	}
 
 	@enable_units = map { quote($_) } sort(uniq(@enable_units));
 	@start_units = map { quote($_) } sort(uniq(@start_units));
 
 	if (@enable_units) {
-		# The generated maintainer script code blocks use the --user
-		# option that was added to deb-systemd-helper in version 1.52.
-		addsubstvar($package, 'misc:Depends', 'init-system-helpers', ">= 1.52");
-
 		my $postinst = $dh{NO_ENABLE} ? 'postinst-systemd-user-dont-enable' : 'postinst-systemd-user-enable';
 		foreach my $unit (@enable_units) {
 			autoscript($package, 'postinst', $postinst, { 'UNITFILE' => $unit });

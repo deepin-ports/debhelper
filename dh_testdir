@@ -41,6 +41,7 @@ Test for the existence of these files too.
 # following is unconditionally true:
 #
 # PROMISE: DH NOOP
+# INTROSPECTABLE: CONFIG-FILES NONE
 
 # Run before init because init will try to read debian/control and
 # we want a nicer error message.

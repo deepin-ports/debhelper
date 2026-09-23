@@ -8,7 +8,7 @@ package Debian::Debhelper::Buildsystem::cmake;
 
 use strict;
 use warnings;
-use Debian::Debhelper::Dh_Lib qw(%dh compat dpkg_architecture_value error is_cross_compiling get_buildoption print_and_doit);
+use Debian::Debhelper::Dh_Lib qw(%dh compat dpkg_architecture_value error is_cross_compiling get_buildoption print_and_doit get_build_tool);
 use parent qw(Debian::Debhelper::Buildsystem);
 
 my @STANDARD_CMAKE_FLAGS = qw(
@@ -79,15 +79,10 @@ sub new {
 	return $this;
 }
 
-sub _get_pkgconf {
-	my $toolprefix = is_cross_compiling() ? dpkg_architecture_value("DEB_HOST_GNU_TYPE") . "-" : "";
-	return "/usr/bin/" . $toolprefix . "pkg-config";
-}
-
 sub _get_cmake_env {
 	my $update_env = {};
 	$update_env->{DEB_PYTHON_INSTALL_LAYOUT} = 'deb' unless $ENV{DEB_PYTHON_INSTALL_LAYOUT};
-	$update_env->{PKG_CONFIG} = _get_pkgconf() unless $ENV{PKG_CONFIG};
+	$update_env->{PKG_CONFIG} = get_build_tool(tool => "PKG_CONFIG");
 	return $update_env;
 }
 
@@ -110,12 +105,16 @@ sub configure {
 		push(@flags, "-DCMAKE_VERBOSE_MAKEFILE=ON");
 	}
 
-	if ($ENV{CC}) {
-		push @flags, "-DCMAKE_C_COMPILER=" . $ENV{CC};
-	}
-	if ($ENV{CXX}) {
-		push @flags, "-DCMAKE_CXX_COMPILER=" . $ENV{CXX};
-	}
+	my $tool;
+	$tool = get_build_tool(tool => "CC", resolve => 1);
+	push @flags, "-DCMAKE_C_COMPILER=$tool" if $tool;
+	$tool = get_build_tool(tool => "CXX", resolve => 1);
+	push @flags, "-DCMAKE_CXX_COMPILER=$tool" if $tool;
+	$tool = get_build_tool(tool => "PKG_CONFIG", resolve => 1);
+	push @flags, ("-DPKG_CONFIG_EXECUTABLE=$tool", "-DPKGCONFIG_EXECUTABLE=$tool") if $tool;
+	$tool = get_build_tool(tool => "QMAKE", resolve => 1);
+	push @flags, "-DQMAKE_EXECUTABLE=$tool" if $tool;
+
 	if (is_cross_compiling()) {
 		my $deb_host = dpkg_architecture_value("DEB_HOST_ARCH_OS");
 		if (my $cmake_system = $DEB_HOST2CMAKE_SYSTEM{$deb_host}) {
@@ -129,15 +128,6 @@ sub configure {
 		} else {
 			push @flags, "-DCMAKE_SYSTEM_PROCESSOR=${gnu_cpu}";
 		}
-		if (not $ENV{CC}) {
-			push @flags, "-DCMAKE_C_COMPILER=" . dpkg_architecture_value("DEB_HOST_GNU_TYPE") . "-gcc";
-		}
-		if (not $ENV{CXX}) {
-			push @flags, "-DCMAKE_CXX_COMPILER=" . dpkg_architecture_value("DEB_HOST_GNU_TYPE") . "-g++";
-		}
-		push(@flags, "-DPKG_CONFIG_EXECUTABLE=" . _get_pkgconf());
-		push(@flags, "-DPKGCONFIG_EXECUTABLE=" . _get_pkgconf());
-		push(@flags, "-DQMAKE_EXECUTABLE=/usr/bin/" . dpkg_architecture_value("DEB_HOST_GNU_TYPE") . "-qmake");
 	}
 	push(@flags, "-DCMAKE_INSTALL_LIBDIR=lib/" . dpkg_architecture_value("DEB_HOST_MULTIARCH"));
 

@@ -40,6 +40,8 @@ multiple times to build up a list of things to exclude.
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 init();
 
 my (@clean_files, @clean_dirs, %seen);

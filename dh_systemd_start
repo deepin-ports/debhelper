@@ -85,6 +85,8 @@ if (not compat(10)) {
 
 $dh{RESTART_AFTER_UPGRADE} = 1 if not compat(9);
 
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 init(options => {
 	"r" => \$dh{R_FLAG},
 	'no-stop-on-upgrade' => \$dh{R_FLAG},

@@ -136,6 +136,8 @@ Debian policy, version 3.0.1
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 init(options => {
 	'keep-debug|keep|k'  => \$dh{K_FLAG},
 	'dbgsym-migration=s' => \$dh{MIGRATE_DBGSYM},

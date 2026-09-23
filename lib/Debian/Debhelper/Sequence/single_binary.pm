@@ -8,7 +8,7 @@ my @packages = getpackages();
 my $pkg = $packages[0];
 my $tmp = tmpdir($pkg);
 if (@packages != 1) {
-    warning('Detected multiple binary packages (Package paragraphs) in debian/control, which is incompatible');
+    warning('Detected multiple binary packages (Package stanzas) in debian/control, which is incompatible');
     warning('with the single-binary dh add-on.');
     warning();
     warning('Please:');
@@ -26,6 +26,13 @@ if (@packages != 1) {
     warning("  into them (by creating debian/${pkg}.install, etc.).  Also remember to add Breaks + Replaces if");
     warning('  you are moving files from one package into another.');
     warning();
+	if (not compat(13)) {
+		warning("Additionally, if you have prefixless configuration files such as debian/install or debian/manpages,");
+		warning("you will need to add explicit package-prefix to the (such as debian/${pkg}.install).");
+		warning("This part can be tool-assisted via:");
+		warning("    apt-get satisfy 'debputy (>= 0.1.73~), debhelper (>= 13.26~)'");
+		warning("    debputy migrate-from-dh --migration-target=dh-package-prefixed-config-files");
+	}
     error("The single-binary add-on cannot be used for source packages that build multiple binary packages.");
 }
 

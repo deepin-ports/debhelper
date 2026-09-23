@@ -51,6 +51,8 @@ up a list of things to exclude.
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 init();
 
 sub patterns2find_expr {

@@ -80,6 +80,8 @@ test"-cycles) rather than optimizing for size.
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 my $create_multifile = 'auto';
 
 init(options => {

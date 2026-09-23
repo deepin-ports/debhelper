@@ -30,7 +30,6 @@ our @BUILDSYSTEMS = (
 	"cmake+ninja",
 	"ant",
 	"qmake",
-	"qmake_qt4",
 	"qmake6",
 	"meson+ninja",
 	"ninja",
@@ -42,6 +41,7 @@ our @THIRD_PARTY_BUILDSYSTEMS = (
 	'mkcmake',
 	'bmake',
 	'golang',
+	'fortran',
 );
 
 # Visible for dh_assistant's sake; not API for external tools!

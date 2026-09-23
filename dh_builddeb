@@ -59,6 +59,8 @@ It is deprecated; use B<--> instead.
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 init(options => {
 	"filename=s" => \$dh{FILENAME},
 	"destdir=s" => \$dh{DESTDIR},

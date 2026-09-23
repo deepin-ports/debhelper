@@ -76,22 +76,17 @@ and F<TODO> files will be installed as F<TODO.Debian> in non-native packages.
 
 Installed as doc-base control files. Note that the doc-id will be
 determined from the B<Document:> entry in the doc-base control file in
-question. In the event that multiple doc-base files in a single source
-package share the same doc-id, they will be installed to
-usr/share/doc-base/package instead of usr/share/doc-base/doc-id.
+question.
 
 =item debian/I<package>.doc-base.*
 
 If your package needs to register more than one document, you need
-multiple doc-base files, and can name them like this. In the event
-that multiple doc-base files of this style in a single source package
-share the same doc-id, they will be installed to
-usr/share/doc-base/package-* instead of usr/share/doc-base/doc-id.
+multiple doc-base files, and can name them like this.
 
-Please be aware that this deduplication is currently done in memory
-only, so for now it requires B<dh_installdocs> to be called no more
-than once during the package build. Calling B<dh_installdocs
--p>I<package> in combination with using
+Please be aware that the files are deduplicated in memory based on
+their doc-id. To work correctly, it requires B<dh_installdocs> to be
+called no more than once during the package build. Calling
+B<dh_installdocs -p>I<package> in combination with using
 F<debian/>I<package>F<.doc-base.*> files can lead to uninstallable
 packages. See L<https://bugs.debian.org/980903> for details.
 
@@ -138,8 +133,13 @@ on multiple packages.  If you need this option, you will generally
 need to combine it with B<-p> to ensure exactly one package is acted
 on.
 
+The B<X-Doc-Main-Package> field can be used instead since
+B<debhelper/13.28>. It has similar semantics but does not require
+command line options.
+
 Please keep in mind that some documentation (the copyright file,
-README.Debian, etc.) will be unaffected by this option.
+README.Debian, etc.) will be unaffected by this option and the
+B<X-Doc-Main-Package> field.
 
 =item B<--link-doc=>I<package>
 
@@ -202,7 +202,7 @@ This is an example of a F<debian/package.docs> file:
 =head1 NOTES
 
 Note that B<dh_installdocs> will happily copy entire directory hierarchies if
-you ask it to (similar to B<cp -a>). If it is asked to install a
+you ask it to (similar to B<cp -a>, but excluding empty files). If it is asked to install a
 directory, it will install the complete contents of the directory.
 
 =cut
@@ -272,6 +272,7 @@ foreach my $package (getpackages()) {
 	my $skip_install = process_pkg($package) ? 0 : 1;
 	my @search_dirs = ('.');
 	my $error_handler = $skip_install ? \&glob_expand_error_handler_silently_ignore : $default_error_handler;
+	my $target_package = compute_doc_main_package($package);
 	@search_dirs = ($dh{SOURCEDIR} // '.', default_sourcedir($package)) if not compat(10);
 
 	if (not $skip_install) {
@@ -320,9 +321,8 @@ foreach my $package (getpackages()) {
 
 	if (not $nodocs and @docs) {
 		my $exclude = ' -and ! -empty';
-		my $target_package = compute_doc_main_package($package);
 		if (not defined($target_package)) {
-			warning("Cannot auto-detect main package for ${package}.  If the default is wrong, please use --doc-main-package");
+			warning("Cannot auto-detect main package for ${package}.  If the default is wrong, please use --doc-main-package or the X-Doc-Main-Package field");
 			$target_package = $package;
 		} elsif ($dh{PARAMS_ALL} and $package ne $target_package and not $dh{DOC_MAIN_PACKAGE}) {
 			warning("Not using auto-detected $target_package as main doc package for $package: With -A/--all, this would cause file-conflicts.");

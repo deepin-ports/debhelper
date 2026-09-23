@@ -60,6 +60,33 @@ instead call that target. The override target can then run the command with
 additional options, or run entirely different commands instead. See
 examples below.
 
+As of B<debhelper> version B<13.25>, override targets (but not other hook
+targets) can use the B<$(DH_OVERRIDDEN_COMMAND)> makefile variable to run
+the command being overridden exactly as it was. This can be useful if you
+want to add extra options like:
+
+    # These examples require debhelper/13.25 or later
+    override_dh_auto_configure:
+        $(DH_OVERRIDDEN_COMMAND) -- --with-foo --with-bar
+
+    override_dh_auto_test:
+        fakeroot $(DH_OVERRIDDEN_COMMAND)
+
+Note this variable is only useful if you want to run the original command
+with something extra. If you just want to run the original command with
+no changes, use B<execute_before_dh_foo> or/and B<execute_after_dh_foo>
+instead.
+
+Be careful with this variable. In older versions of B<debhelper>, the
+variable is unset, which will cause it to expand to nothing. Depending
+on what else is on the line, this may not cause a failure where you
+expect it.
+
+Additionally, be careful with typos. English has a grammatical
+irregularity here, where B<override> has one B<d> (target name; imperative)
+whereas the B<OVERRIDDEN> has two B<D>s (variable name; past particle).
+It is unfortunate and confusing, but that is how English grammar works.
+
 =head2 Architecture dependent/independent override and hook targets
 
 The override and hook targets can also be defined to run only
@@ -152,7 +179,7 @@ a command name.  But otherwise, the principle remains the same.
 =head2 Caveats with hook targets and makefile conditionals
 
 If you choose to wrap a hook target in makefile conditionals, please
-be aware that B<dh> computes all the hook targets a head of time and
+be aware that B<dh> computes all the hook targets ahead of time and
 caches the result for that run.  Furthermore, the conditionals will be
 invoked again when B<dh> calls the hook target later and will assume
 the answer did not change.
@@ -480,10 +507,12 @@ successfully. See L</INTERNALS> for more details.
 This addon is active by default but can disabled by using
 B<dh $@ --without build-stamp>
 
-=item dwz (obsolete)
+=item dwz
 
-Adds L<dh_dwz(1)> to the sequence in compat level 11 or below.  Obsolete
-in compat 12 or later.
+Adds L<dh_dwz(1)> to the sequence.
+
+Note this is only relevant in compats below 11 or in compat 14+. It
+was on by default in compat 12 and 13.
 
 =item elf-tools
 

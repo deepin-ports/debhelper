@@ -117,6 +117,11 @@ sub _parse_alternative_and_generate_maintscript {
 		error(qq{The link name cannot be the same as the implementation path "${link_name}" (in "${alternatives_file}")});
 	}
 
+	my $link_dir = dirname($link_path);
+
+	if (exists($SYSTEM_DEFAULT_PATH_DIRS{$link_dir}) and not compat(13)) {
+		addsubstvar($package, "misc:Commands", basename($link_path));
+	}
 	$maintscript_options{'RM_OPTIONS'} = "--remove ${link_name} ${impl_path}";
 	$maintscript_options{'INSTALL_OPTIONS'} = "--install ${link_path} ${link_name} ${impl_path} ${priority}";
 

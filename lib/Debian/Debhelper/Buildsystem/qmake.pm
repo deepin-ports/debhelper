@@ -8,7 +8,7 @@ package Debian::Debhelper::Buildsystem::qmake;
 
 use strict;
 use warnings;
-use Debian::Debhelper::Dh_Lib qw(dpkg_architecture_value error is_cross_compiling);
+use Debian::Debhelper::Dh_Lib qw(dpkg_architecture_value error is_cross_compiling get_build_tool);
 use parent qw(Debian::Debhelper::Buildsystem::makefile);
 
 my %OS_MKSPEC_MAPPING = (
@@ -94,10 +94,7 @@ sub install {
 }
 
 sub _qmake {
-	if (is_cross_compiling()) {
-		return dpkg_architecture_value("DEB_HOST_GNU_TYPE") . "-qmake";
-	}
-	return 'qmake';
+	return get_build_tool(command => "qmake", required => 1);
 }
 
 1

@@ -1,7 +1,7 @@
 Source: testsrcpackage
 Section: devel
 Priority: optional
-Maintainer: Test <testing@nowhere>
+Maintainer: Test <testing@nowhere.example.com>
 Standards-Version: 3.8.1
 Build-Depends: debhelper-compat (= 12)
 Rules-Requires-Root: no

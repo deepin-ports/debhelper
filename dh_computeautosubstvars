@@ -1,0 +1,72 @@
+#!/usr/bin/perl
+
+=head1 NAME
+
+dh_computeautosubstvars - compute substvars relevant to most packages
+
+=cut
+
+use strict;
+use warnings;
+use Debian::Debhelper::Dh_Lib;
+
+our $VERSION = DH_BUILTIN_VERSION;
+
+=head1 SYNOPSIS
+
+B<dh_computeautosubstvars> [S<I<debhelper options>>] [S<B<--> I<params>>]
+
+=head1 DESCRIPTION
+
+B<dh_computeautosubstvars> is a debhelper program that is responsible for
+computing substvars relevant to most packages. It needs to be run before
+B<dh_gencontrol> but after all the content has been added into the package
+staging directory (B<< debian/I<package>/  >>).
+
+Note that this command generally assumes compat 14 or later where
+B<dh_gencontrol> will apply relationship substvars automatically. It can
+be used in older compat levels but the substvars will not be used
+automatically in that case.
+
+=head1 OPTIONS
+
+This helper only accepts standard B<debhelper> options. Please refer to
+L<debhelper(7)> for these.
+
+=cut
+
+# INTROSPECTABLE: CONFIG-FILES NONE
+
+init();
+
+on_pkgs_in_parallel {
+	foreach my $package (@_) {
+		next if is_udeb($package);
+		my $tmp = tmpdir($package);
+		my %commands;
+		for my $dirname (sort(keys(%SYSTEM_DEFAULT_PATH_DIRS))) {
+			my $dir = "${tmp}/${dirname}";
+			next if not -d $dir;
+			opendir(my $dirfd, $dir) or error("Cannot opendir(${dir}): $!");
+			while (my $child = readdir($dirfd)) {
+				my $path = "${dir}/${child}";
+				next if not -l $path and not -f _;
+				$commands{$child} = 1;
+			}
+			closedir($dirfd);
+		}
+		next if not %commands;
+
+		for my $command (sort(keys(%commands))) {
+			addsubstvar($package, "misc:Commands", $command);
+		}
+	}
+};
+
+=head1 SEE ALSO
+
+L<debhelper(7)>
+
+This program is a part of debhelper.
+
+=cut

@@ -66,8 +66,7 @@ Only used in compat 12 or earlier.  In compat 13+, this file is
 handled by L<dh_installtmpfiles(1)> instead.
 
 If this exists, it is installed into F<usr/lib/tmpfiles.d/> in the
-package build directory. Note that the C<tmpfiles.d> mechanism is
-currently only used by systemd.
+package build directory.
 
 =back
 
@@ -389,6 +388,10 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 		# only to suport a very specific use case in network-manager.
 		unless ($dh{NO_ALSO}) {
 			push @args, $_ for grep { !$seen{$_}++ } extract_key($path, 'Also');
+			# Ensure excluded units do not sneak back in via Also=.
+			foreach my $x (@{$dh{EXCLUDE}}) {
+				@args = grep !/(^|\/)$x$/, @args;
+			}
 		}
 
 		# Extract unit aliases.
@@ -442,8 +445,7 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 			unless ($dh{R_FLAG} || $dh{RESTART_AFTER_UPGRADE});
 
 		# stop service only on remove
-		autoscript($package, 'prerm', 'prerm-systemd-restart', $replace, \%options)
-			unless ($dh{NO_START});
+		autoscript($package, 'prerm', 'prerm-systemd-restart', $replace, \%options);
 
 		# Run this with "default" order so it is always after other
 		# service related autosnippets.

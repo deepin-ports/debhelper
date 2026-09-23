@@ -97,6 +97,9 @@ my @b = (
 ) : qw()),
 qw{
 	dh_installdeb
+},
+	(!compat(13) ? qw(dh_computeautosubstvars) : qw()),
+qw{
 	dh_gencontrol
 	dh_md5sums
 	dh_builddeb

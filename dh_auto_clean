@@ -47,6 +47,7 @@ B<dh_auto_clean> usually passes.
 =cut
 
 # PROMISE: DH NOOP WITHOUT cli-options(BUILDSYSTEM) buildsystem(clean)
+# INTROSPECTABLE: CONFIG-FILES NONE
 
 inhibit_log();
 buildsystems_init();

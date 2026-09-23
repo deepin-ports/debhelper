@@ -77,6 +77,8 @@ Debian policy, version 3.0
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES pkgfile(compress)
+
 init();
 
 on_pkgs_in_parallel {
@@ -145,6 +147,7 @@ on_pkgs_in_parallel {
 					! -iname "*.xz" ! -iname "*.lz" ! -iname "*.lzma" \\
 					! -iname "*.haddock" ! -iname "*.hs" \\
 					! -iname "*.woff" ! -iname "*.woff2" \\
+					! -iname "*.[Rr]da" ! -iname "*.[Rr][Dd]ata" ! -iname "*.[Rr]ds" \\
 					! -iname "*.svg" ! -iname "*.svgz" ! -iname "*.js" \\
 					! -name "index.sgml" ! -name "objects.inv" ! -name "*.map" \\
 					! -name "*.devhelp2" ! -name "search_index.json" \\

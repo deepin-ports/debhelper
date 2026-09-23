@@ -1,0 +1,12 @@
+Source: foo
+Section: libs
+Priority: optional
+Maintainer: Test <testing@nowhere.example.com>
+Standards-Version: 4.7.2
+X-DH-Compat: @DH_COMPAT_LEVEL@
+
+Package: libfoo0
+Architecture: any
+Multi-Arch: same
+Description: something library
+ A library that does something

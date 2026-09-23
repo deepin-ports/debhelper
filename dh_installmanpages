@@ -65,6 +65,8 @@ not be processed properly.
 
 =cut
 
+# INTROSPECTABLE: CONFIG-FILES NONE
+
 warning("This program is deprecated, switch to dh_installman.");
 
 init();

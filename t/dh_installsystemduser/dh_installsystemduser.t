@@ -14,6 +14,7 @@ our @TEST_DH_EXTRA_TEMPLATE_FILES = (qw(
 	debian/control
 	debian/foo.user.service
 	debian/foo.baz.user.service
+	debian/foo.refused.user.service
 ));
 
 
@@ -36,10 +37,10 @@ sub _unit_check_user_enabled {
 	my $matches;
 
 	my @postinst = read_script($package, 'postinst');
-	# Match exactly two tab character. The "dont-enable" script has
+	# Match exactly one tab character. The "dont-enable" script has
 	# an "enable" line for re-enabling the service if the admin had it
 	# enabled, but we do not want to include that in our count.
-	$matches = grep { m{^\t\tif deb-systemd-helper( --\w+)* --user was-enabled.*'\Q$unit'} } @postinst;
+	$matches = grep { m{^\tif deb-systemd-helper( --\w+)* --user was-enabled.*'\Q$unit'} } @postinst;
 	is($matches, $enabled, "$unit $verb enabled");
 }
 
@@ -108,5 +109,18 @@ each_compat_subtest {
 		isnt_started('foo', 'foo.service');
 		isnt_started('foo', 'baz.service');
 	}
+	ok(run_dh_tool('dh_clean'));
+
+	ok(run_dh_tool('dh_installsystemduser', '--name', 'refused'));
+	ok(! -e 'debian/foo/usr/lib/systemd/user/foo.service');
+	ok(! -e 'debian/foo/usr/lib/systemd/user/baz.service');
+	ok(-e 'debian/foo/usr/lib/systemd/user/refused.service');
+	isnt_enabled('foo', 'foo.service');
+	isnt_enabled('foo', 'baz.service');
+	is_enabled('foo', 'refused.service');
+	isnt_started('foo', 'foo.service');
+	isnt_started('foo', 'baz.service');
+	# It has `RefuseManualStart=yes`
+	isnt_started('foo', 'refused.service');
 	ok(run_dh_tool('dh_clean'));
 };

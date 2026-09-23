@@ -89,7 +89,7 @@ on_pkgs_in_parallel {
 
 		# avoid gratuitous warnings
 		ensure_substvars_are_present($substvars, 'misc:Depends', 'misc:Pre-Depends')
-			if compat(14);
+			if compat(13);
 
 		my (@debug_info_params, $build_ids, @pkg_gencontrol_args);
 		if ( -d $dbgsym_info_dir ) {
@@ -138,6 +138,8 @@ on_pkgs_in_parallel {
 			# need a multi-arch value.
 			if ($multiarch ne 'same') {
 				push(@dbgsym_options, '-UMulti-Arch');
+			} else {
+				push(@dbgsym_options, "-DMulti-Arch=$multiarch");
 			}
 			# If the dbgsym package is replacing an existing -dbg package,
 			# then declare the necessary Breaks + Replaces.  Otherwise,

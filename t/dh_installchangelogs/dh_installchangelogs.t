@@ -21,7 +21,7 @@ our @TEST_DH_EXTRA_TEMPLATE_FILES = (qw(
 # Force Time::Piece to generate dch-compliant timestamps (i.e. in English).
 setlocale(LC_ALL, "C.UTF-8");
 
-use constant CUTOFF_DATE_STR => "2019-07-06"; # oldstable = Debian 10 Buster
+use constant CUTOFF_DATE_STR => "2023-06-10"; # oldstable = Debian 12 Bookworm
 use constant CUTOFF_DATE => Time::Piece->strptime(CUTOFF_DATE_STR, "%Y-%m-%d");
 use constant MIN_NUM_ENTRIES => 4;
 
@@ -75,7 +75,7 @@ sub entry_text {
 	my $entry = "";
 	$entry .= "foo ($ver) unstable; urgency=low$binnmu_text\n\n";
 	$entry .= "  * New release.\n\n";
-	$entry .= " -- Test <testing\@nowhere>  $entry_date_str\n\n";
+	$entry .= " -- Test <testing\@nowhere.example.com>  $entry_date_str\n\n";
 
 	return $entry;
 }
